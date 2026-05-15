@@ -32,7 +32,7 @@
           <span class="log-logger">[{{ log.logger }}]</span>
           <div class="tooltip logger-tooltip">{{ log.logger }}</div>
         </span>
-        <span class="log-msg" v-html="renderMessage(log.message, log.source)"></span>
+        <span class="log-msg" v-html="renderMessage(log)"></span>
       </div>
     </div>
     <div class="terminal-input-wrapper">
@@ -204,13 +204,24 @@ function parseAnsi(text) {
 
 // ── Message renderer ──
 
-function renderMessage(msg, source) {
+function renderMessage(log) {
+  const msg = log.message;
   if (!msg) return '';
 
+  // If message is already pre-formatted HTML (from command output), use directly
+  if (log.messageFormat === 'html') {
+    let html = msg;
+    // Still highlight exceptions even in HTML content
+    html = html.replace(/(\b[A-Z][a-z]+Exception\b)/g,
+      '<span style="color:#f87171;font-weight:bold">$1</span>');
+    return html;
+  }
+
+  // Plain text: parse ANSI and escape HTML
   let html = parseAnsi(msg);
 
   // Highlight web commands specially
-  if (source === 'web') {
+  if (log.source === 'web') {
     html = `<span class="web-cmd-marker">></span> ${html}`;
   }
 

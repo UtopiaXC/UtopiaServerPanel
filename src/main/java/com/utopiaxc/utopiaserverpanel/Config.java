@@ -17,5 +17,9 @@ public class Config {
             .comment("Maximum number of log lines to keep in the console buffer")
             .defineInRange("maxLogLines", 1000, 100, 100000);
 
+    public static final ModConfigSpec.ConfigValue<String> MIN_LOG_LEVEL = BUILDER
+            .comment("Minimum log level to capture for the web console (OFF, FATAL, ERROR, WARN, INFO, DEBUG, TRACE)")
+            .define("minLogLevel", "INFO");
+
     static final ModConfigSpec SPEC = BUILDER.build();
 }

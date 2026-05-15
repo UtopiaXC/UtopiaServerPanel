@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.utopiaxc.utopiaserverpanel.Config;
 import com.utopiaxc.utopiaserverpanel.web.controller.WebSocketController;
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.LogEvent;
@@ -12,6 +13,8 @@ import org.apache.logging.log4j.core.appender.AbstractAppender;
 import org.apache.logging.log4j.core.config.Property;
 import org.apache.logging.log4j.core.layout.PatternLayout;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -29,35 +32,43 @@ public class TerminalCapture extends AbstractAppender {
             .withAlwaysWriteExceptions(true)
             .build();
 
+    private static volatile Level minLevel = null;
+
     protected TerminalCapture(String name, Filter filter) {
         super(name, filter, LAYOUT, true, Property.EMPTY_ARRAY);
     }
 
+    /** Resolve the configured minimum log level, cached for performance. */
+    private static Level getMinLevel() {
+        if (minLevel == null) {
+            minLevel = Level.getLevel(Config.MIN_LOG_LEVEL.get());
+        }
+        return minLevel;
+    }
+
+    /** Called when config reloads to invalidate cached level. */
+    public static void invalidateMinLevel() {
+        minLevel = null;
+    }
+
     @Override
     public void append(LogEvent event) {
-        // Filter out TRACE and lower level logs — they are too verbose
-        if (event.getLevel().intLevel() < org.apache.logging.log4j.Level.DEBUG.intLevel()) {
+        // Filter by configurable minimum log level
+        Level threshold = getMinLevel();
+        if (threshold != null && !event.getLevel().isMoreSpecificThan(threshold)) {
             return;
-        }
-
-        // Filter out sensitive Netty debug logs
-        if ("io.netty.handler.codec.http.websocketx.WebSocketServerHandshaker".equals(event.getLoggerName())) {
-            // These might contain handshake keys which users consider sensitive
-            if (event.getLevel() == org.apache.logging.log4j.Level.DEBUG) {
-                return;
-            }
         }
 
         // Build structured JSON log entry for the frontend
         JsonObject entry = new JsonObject();
-        entry.addProperty("time", new java.text.SimpleDateFormat("HH:mm:ss")
-                .format(new java.util.Date(event.getTimeMillis())));
+        entry.addProperty("time", new SimpleDateFormat("HH:mm:ss")
+                .format(new Date(event.getTimeMillis())));
         entry.addProperty("level", event.getLevel().name());
         entry.addProperty("logger", event.getLoggerName());
         entry.addProperty("thread", event.getThreadName());
         entry.addProperty("source", "server");
 
-        // Raw message with ANSI preserved (for Spark compatibility)
+        // Raw message with ANSI/styled content preserved (for Spark compatibility)
         String formatted = event.getMessage().getFormattedMessage();
         entry.addProperty("message", formatted != null ? formatted : "");
 
@@ -103,13 +114,40 @@ public class TerminalCapture extends AbstractAppender {
     /** Inject a log line from the web console (player-issued command). */
     public static void addWebLog(String command) {
         JsonObject entry = new JsonObject();
-        entry.addProperty("time", new java.text.SimpleDateFormat("HH:mm:ss")
-                .format(new java.util.Date()));
+        entry.addProperty("time", new SimpleDateFormat("HH:mm:ss")
+                .format(new Date()));
         entry.addProperty("level", "WEB");
         entry.addProperty("logger", "WebConsole");
         entry.addProperty("thread", "Web Panel");
         entry.addProperty("message", command);
         entry.addProperty("source", "web");
+
+        String json = GSON.toJson(entry);
+        synchronized (logs) {
+            logs.add(json);
+            int maxLines = Config.MAX_LOG_LINES.getAsInt();
+            while (logs.size() > maxLines) {
+                logs.removeFirst();
+            }
+        }
+
+        try {
+            WebSocketController.broadcastLog(json);
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Inject a formatted log entry for command output (supports HTML/rich text from mods like Spark). */
+    public static void addCommandOutput(String level, String logger, String message) {
+        JsonObject entry = new JsonObject();
+        entry.addProperty("time", new SimpleDateFormat("HH:mm:ss")
+                .format(new Date()));
+        entry.addProperty("level", level);
+        entry.addProperty("logger", logger);
+        entry.addProperty("thread", "Server");
+        entry.addProperty("message", message);
+        entry.addProperty("source", "server");
+        entry.addProperty("messageFormat", "html");
 
         String json = GSON.toJson(entry);
         synchronized (logs) {
@@ -133,5 +171,10 @@ public class TerminalCapture extends AbstractAppender {
         ctx.getConfiguration().addAppender(appender);
         ctx.getRootLogger().addAppender(ctx.getConfiguration().getAppender(appender.getName()));
         ctx.updateLoggers();
+    }
+
+    /** Re-register when config changes to pick up new log level */
+    public static void reconfigure() {
+        invalidateMinLevel();
     }
 }
