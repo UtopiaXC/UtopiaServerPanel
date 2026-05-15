@@ -1,0 +1,13 @@
+{
+  "itemGroup.utopiaserverpanel": "Example Mod Tab",
+  "block.utopiaserverpanel.example_block": "Example Block",
+  "item.utopiaserverpanel.example_item": "Example Item",
+
+  "utopiaserverpanel.configuration.title": "Utopia Server Panel Configs",
+  "utopiaserverpanel.configuration.section.utopiaserverpanel.common.toml": "Utopia Server Panel Configs",
+  "utopiaserverpanel.configuration.section.utopiaserverpanel.common.toml.title": "Utopia Server Panel Configs",
+  "utopiaserverpanel.configuration.items": "Item List",
+  "utopiaserverpanel.configuration.logDirtBlock": "Log Dirt Block",
+  "utopiaserverpanel.configuration.magicNumberIntroduction": "Magic Number Text",
+  "utopiaserverpanel.configuration.magicNumber": "Magic Number"
+}

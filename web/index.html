@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="color-scheme" content="light dark">
+    <meta name="google" content="notranslate">
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Utopia Server Panel</title>
+    <style>
+      :root {
+        --bg-color: #f3f4f6;
+        --card-bg: #ffffff;
+        --text-primary: #333333;
+        --text-secondary: #64748b;
+        --text-strong: #1e293b;
+        --border-color: #e2e8f0;
+        --border-hover: #cbd5e1;
+        --tooltip-bg: #ffffff;
+        --tooltip-shadow: rgba(0,0,0,0.15);
+        --input-bg: #ffffff;
+        --input-text: #1e293b;
+        --shadow-color: rgba(0,0,0,0.05);
+
+        --primary-color: #3b82f6;
+        --tab-bg: #e2e8f0;
+        --tab-text: #4a5568;
+        --tab-hover: #cbd5e0;
+        --tab-active: #3182ce;
+        --tab-active-text: #ffffff;
+
+        --progress-bg: #e2e8f0;
+        --dot-total: #e2e8f0;
+        --dot-total-border: #cbd5e1;
+      }
+
+      html.dark {
+        --bg-color: #0f172a;
+        --card-bg: #1e293b;
+        --text-primary: #e2e8f0;
+        --text-secondary: #94a3b8;
+        --text-strong: #f8fafc;
+        --border-color: #334155;
+        --border-hover: #475569;
+        --tooltip-bg: #1e293b;
+        --tooltip-shadow: rgba(0,0,0,0.5);
+        --input-bg: #0f172a;
+        --input-text: #e2e8f0;
+        --shadow-color: rgba(0,0,0,0.25);
+
+        --primary-color: #3b82f6;
+        --tab-bg: #334155;
+        --tab-text: #94a3b8;
+        --tab-hover: #475569;
+        --tab-active: #3b82f6;
+        --tab-active-text: #ffffff;
+
+        --progress-bg: #334155;
+        --dot-total: #334155;
+        --dot-total-border: #475569;
+      }
+
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background-color: var(--bg-color);
+        color: var(--text-primary);
+        transition: background-color 0.3s, color 0.3s;
+      }
+
+      .custom-select {
+        appearance: none;
+        -webkit-appearance: none;
+        background-color: var(--tooltip-bg);
+        color: var(--input-text);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 6px 30px 6px 12px;
+        font-size: 0.9rem;
+        cursor: pointer;
+        outline: none;
+        box-shadow: 0 2px 4px var(--shadow-color);
+        transition: all 0.2s;
+        background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2364748b%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+        background-size: 10px auto;
+      }
+      .custom-select:hover {
+        border-color: var(--border-hover);
+      }
+      .custom-select:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+      }
+
+      .theme-toggle {
+        background: var(--tooltip-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 0 12px;
+        height: 32px;
+        box-sizing: border-box;
+        cursor: pointer;
+        box-shadow: 0 2px 4px var(--shadow-color);
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--input-text);
+      }
+      .theme-toggle:hover {
+        border-color: var(--border-hover);
+      }
+
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
