@@ -35,6 +35,11 @@ public class TerminalCapture extends AbstractAppender {
 
     @Override
     public void append(LogEvent event) {
+        // Filter out TRACE and lower level logs — they are too verbose
+        if (event.getLevel().intLevel() < org.apache.logging.log4j.Level.DEBUG.intLevel()) {
+            return;
+        }
+
         // Filter out sensitive Netty debug logs
         if ("io.netty.handler.codec.http.websocketx.WebSocketServerHandshaker".equals(event.getLoggerName())) {
             // These might contain handshake keys which users consider sensitive

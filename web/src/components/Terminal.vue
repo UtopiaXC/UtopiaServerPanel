@@ -62,7 +62,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, onActivated, nextTick } from 'vue';
 import { on, off, sendCommand, fetchCompletions, fetchLogs } from '../api.js';
 
 const logs = ref([]);
@@ -73,7 +73,6 @@ const terminalOutput = ref(null);
 const commandInputRef = ref(null);
 const isExecuting = ref(false);
 const autoScroll = ref(true);
-const savedScrollTop = ref(0);
 
 const setFilter = (lvl) => {
   logFilter.value = lvl;
@@ -349,22 +348,14 @@ onUnmounted(() => {
   if (completionTimeout) clearTimeout(completionTimeout);
 });
 
+// When tab is re-activated (switching back from another tab), scroll to bottom
 onActivated(() => {
-  setTimeout(() => {
+  autoScroll.value = true;
+  nextTick(() => {
     if (terminalOutput.value) {
-      if (autoScroll.value) {
-        scrollToBottom();
-      } else {
-        terminalOutput.value.scrollTop = savedScrollTop.value;
-      }
+      terminalOutput.value.scrollTop = terminalOutput.value.scrollHeight;
     }
-  }, 50);
-});
-
-onDeactivated(() => {
-  if (terminalOutput.value) {
-    savedScrollTop.value = terminalOutput.value.scrollTop;
-  }
+  });
 });
 
 </script>
