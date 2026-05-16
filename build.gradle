@@ -93,6 +93,32 @@ dependencies {
     // NeoForge 1.21.1 already strictly includes OSHI 6.4.10, so we use compileOnly to compile against it
     // without shading it or conflicting with NeoForge's strictly enforced version.
     compileOnly 'com.github.oshi:oshi-core:6.4.10'
+
+    // SQLite JDBC: embedded database for user/auth data
+    shade 'org.xerial:sqlite-jdbc:3.45.3.0'
+    implementation 'org.xerial:sqlite-jdbc:3.45.3.0'
+    additionalRuntimeClasspath 'org.xerial:sqlite-jdbc:3.45.3.0'
+
+    // JWT (jjwt): JSON Web Token for stateless authentication
+    shade 'io.jsonwebtoken:jjwt-api:0.12.6'
+    shade 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    shade 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+    implementation 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    implementation 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+    additionalRuntimeClasspath 'io.jsonwebtoken:jjwt-api:0.12.6'
+    additionalRuntimeClasspath 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    additionalRuntimeClasspath 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+
+    // jBCrypt: password hashing
+    shade 'org.mindrot:jbcrypt:0.4'
+    implementation 'org.mindrot:jbcrypt:0.4'
+    additionalRuntimeClasspath 'org.mindrot:jbcrypt:0.4'
+
+    // MyBatis: persistence layer
+    shade 'org.mybatis:mybatis:3.5.16'
+    implementation 'org.mybatis:mybatis:3.5.16'
+    additionalRuntimeClasspath 'org.mybatis:mybatis:3.5.16'
 }
 
 // Shadow: merge shaded deps into the mod JAR with package relocation
@@ -103,6 +129,10 @@ shadowJar {
 
     // Relocate to avoid JPMS split-package with MC's built-in Netty modules
     relocate 'io.netty.handler.codec.http', 'com.utopiaxc.utopiaserverpanel.shaded.netty.http'
+    relocate 'org.sqlite', 'com.utopiaxc.utopiaserverpanel.shaded.sqlite'
+    relocate 'io.jsonwebtoken', 'com.utopiaxc.utopiaserverpanel.shaded.jjwt'
+    relocate 'org.mindrot.jbcrypt', 'com.utopiaxc.utopiaserverpanel.shaded.jbcrypt'
+    relocate 'org.apache.ibatis', 'com.utopiaxc.utopiaserverpanel.shaded.ibatis'
 }
 
 // Make shadowJar run after jar, and replace the default jar artifact

@@ -63,7 +63,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, onActivated, nextTick } from 'vue';
-import { on, off, sendCommand, fetchCompletions, fetchLogs } from '../api.js';
+import { on, off, sendCommand, fetchCompletions, fetchLogs, fetchCommandHistory } from '../api.js';
 
 const logs = ref([]);
 const logFilter = ref('');
@@ -73,6 +73,11 @@ const terminalOutput = ref(null);
 const commandInputRef = ref(null);
 const isExecuting = ref(false);
 const autoScroll = ref(true);
+
+// Command history
+const commandHistory = ref([]);
+const historyIndex = ref(-1);
+let savedInput = '';
 
 const setFilter = (lvl) => {
   logFilter.value = lvl;
@@ -222,7 +227,10 @@ function renderMessage(log) {
 
   // Highlight web commands specially
   if (log.source === 'web') {
-    html = `<span class="web-cmd-marker">></span> ${html}`;
+    // Don't double-prefix messages that already start with "> "
+    if (!html.startsWith('&gt; ') && !html.startsWith('> ')) {
+      html = `<span class="web-cmd-marker">&gt;</span> ${html}`;
+    }
   }
 
   // Highlight common Minecraft log patterns within message
@@ -283,6 +291,12 @@ const handleCompletions = (msg) => {
   }
 };
 
+const handleCommandHistory = (msg) => {
+  if (msg.data && Array.isArray(msg.data)) {
+    commandHistory.value = msg.data;
+  }
+};
+
 const handleKeydown = (e) => {
   if (e.key === 'Tab') {
     e.preventDefault();
@@ -296,6 +310,15 @@ const handleKeydown = (e) => {
       selectedCompletionIndex.value = selectedCompletionIndex.value <= 0
         ? completions.value.length - 1
         : selectedCompletionIndex.value - 1;
+    } else if (commandHistory.value.length > 0) {
+      // Navigate command history
+      if (historyIndex.value === -1) {
+        savedInput = commandInput.value;
+        historyIndex.value = commandHistory.value.length - 1;
+      } else if (historyIndex.value > 0) {
+        historyIndex.value--;
+      }
+      commandInput.value = commandHistory.value[historyIndex.value];
     }
   } else if (e.key === 'ArrowDown') {
     e.preventDefault();
@@ -303,6 +326,16 @@ const handleKeydown = (e) => {
       selectedCompletionIndex.value = selectedCompletionIndex.value >= completions.value.length - 1
         ? 0
         : selectedCompletionIndex.value + 1;
+    } else if (historyIndex.value >= 0) {
+      // Navigate command history forward
+      if (historyIndex.value < commandHistory.value.length - 1) {
+        historyIndex.value++;
+        commandInput.value = commandHistory.value[historyIndex.value];
+      } else {
+        historyIndex.value = -1;
+        commandInput.value = savedInput;
+        savedInput = '';
+      }
     }
   } else if (e.key === 'Enter') {
     if (completions.value.length > 0 && selectedCompletionIndex.value >= 0) {
@@ -310,6 +343,12 @@ const handleKeydown = (e) => {
       applyCompletion(completions.value[selectedCompletionIndex.value]);
     } else {
       executeCommand();
+    }
+  } else {
+    // Reset history navigation on any other key
+    if (historyIndex.value >= 0) {
+      historyIndex.value = -1;
+      savedInput = '';
     }
   }
 };
@@ -331,8 +370,17 @@ const applyCompletion = (comp) => {
 const executeCommand = async () => {
   if (!commandInput.value.trim() || isExecuting.value) return;
 
+  const cmd = commandInput.value.trim();
   isExecuting.value = true;
-  sendCommand(commandInput.value);
+  sendCommand(cmd);
+
+  // Save to history
+  if (commandHistory.value.length === 0 || commandHistory.value[commandHistory.value.length - 1] !== cmd) {
+    commandHistory.value.push(cmd);
+    if (commandHistory.value.length > 100) commandHistory.value.shift();
+  }
+  historyIndex.value = -1;
+  savedInput = '';
 
   commandInput.value = '';
   autoScroll.value = true;
@@ -340,22 +388,23 @@ const executeCommand = async () => {
   completions.value = [];
   selectedCompletionIndex.value = -1;
 
-  setTimeout(() => {
-    isExecuting.value = false;
-  }, 100);
+  setTimeout(() => { isExecuting.value = false; }, 100);
 };
 
 onMounted(() => {
   on('logs', handleInitialLogs);
   on('new_log', handleNewLog);
   on('completions', handleCompletions);
+  on('command_history', handleCommandHistory);
   fetchLogs();
+  fetchCommandHistory();
 });
 
 onUnmounted(() => {
   off('logs', handleInitialLogs);
   off('new_log', handleNewLog);
   off('completions', handleCompletions);
+  off('command_history', handleCommandHistory);
   if (completionTimeout) clearTimeout(completionTimeout);
 });
 
@@ -599,4 +648,13 @@ onActivated(() => {
   background: #555;
   cursor: not-allowed;
 }
+
+/* ── Filter dropdown in terminal header ── */
+.terminal-header .custom-dropdown { position: relative; display: inline-block; user-select: none; flex-shrink: 0; }
+.terminal-header .custom-dropdown-btn { background: #3e3e42; color: #ccc; border: 1px solid #555; border-radius: 4px; padding: 4px 28px 4px 10px; height: 28px; display: flex; align-items: center; font-size: 0.8rem; cursor: pointer; white-space: nowrap; background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23999%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E"); background-repeat: no-repeat; background-position: right 6px center; background-size: 8px auto; }
+.terminal-header .custom-dropdown-btn:hover { border-color: #777; }
+.terminal-header .custom-dropdown-menu { position: absolute; top: 100%; right: 0; margin-top: 4px; background: #2d2d30; border: 1px solid #555; border-radius: 4px; list-style: none; padding: 4px 0; z-index: 200; min-width: 100px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+.terminal-header .custom-dropdown-menu li { padding: 6px 14px; font-size: 0.8rem; color: #ccc; cursor: pointer; white-space: nowrap; }
+.terminal-header .custom-dropdown-menu li:hover { background: #3e3e42; }
+.terminal-header .custom-dropdown-menu li.active { color: #4ade80; font-weight: bold; }
 </style>

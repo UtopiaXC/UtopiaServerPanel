@@ -21,5 +21,9 @@ public class Config {
             .comment("Minimum log level to capture for the web console (OFF, FATAL, ERROR, WARN, INFO, DEBUG, TRACE)")
             .define("minLogLevel", "INFO");
 
+    public static final ModConfigSpec.BooleanValue ALLOW_REGISTRATION = BUILDER
+            .comment("Allow new users to register through the web panel")
+            .define("allowRegistration", true);
+
     static final ModConfigSpec SPEC = BUILDER.build();
 }

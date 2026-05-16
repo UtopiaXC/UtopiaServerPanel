@@ -11,13 +11,13 @@
 
       <div class="stat-card">
         <h3>{{ $t('summary.cpuUsage') }}</h3>
-        <div class="progress-bar-container" @mouseenter="showCores = true" @mouseleave="showCores = false">
+        <div class="progress-bar-container" @mouseenter="handleTooltipEnter($event, 'cores')" @mouseleave="showCores = false">
           <div class="progress-bar-bg">
             <div class="progress-bar-fill" :style="{ width: status.cpuLoad + '%' }"></div>
           </div>
           <div class="progress-label">{{ status.cpuLoad >= 0 ? status.cpuLoad.toFixed(1) + '%' : 'N/A' }}</div>
 
-          <div class="tooltip cores-tooltip" v-if="showCores && status.coreLoads">
+          <div class="tooltip cores-tooltip" :class="{ 'show-below': showCoresBelow }" v-if="showCores && status.coreLoads">
             <div class="tooltip-title">{{ $t('summary.coreUsage') }}</div>
             <div class="cores-grid">
               <div v-for="(load, index) in status.coreLoads" :key="index" class="core-item">
@@ -31,7 +31,7 @@
 
       <div class="stat-card">
         <h3>{{ $t('summary.memoryUsage') }}</h3>
-        <div class="progress-bar-container memory-bar-container" @mouseenter="showMemTooltip = true" @mouseleave="showMemTooltip = false">
+        <div class="progress-bar-container memory-bar-container" @mouseenter="handleTooltipEnter($event, 'mem')" @mouseleave="showMemTooltip = false">
           <div class="progress-bar-bg memory-total">
             <div class="progress-bar-limit memory-jvm-max" :style="{ width: (status.jvmMaxMemory / status.systemTotalMemory * 100) + '%' }">
               <div class="progress-bar-fill memory-jvm-used" :style="{ width: (status.jvmUsedMemory / status.jvmMaxMemory * 100) + '%' }"></div>
@@ -39,7 +39,7 @@
           </div>
           <div class="progress-label">{{ formatMemoryInt(status.jvmUsedMemory) }} / {{ formatMemoryInt(status.jvmMaxMemory) }} / {{ formatMemoryInt(status.systemTotalMemory) }}</div>
 
-          <div class="tooltip" v-if="showMemTooltip">
+          <div class="tooltip" :class="{ 'show-below': showMemBelow }" v-if="showMemTooltip">
             <div class="tooltip-title">{{ $t('summary.memoryUsage') }}</div>
             <div class="inline-legend-tooltip">
               <div><span class="dot used-dot"></span> {{ $t('summary.jvmUsedMemory') }}: {{ formatMemory(status.jvmUsedMemory) }}</div>
@@ -52,7 +52,7 @@
 
       <div class="stat-card">
         <h3>{{ $t('summary.diskUsage') }}</h3>
-        <div class="progress-bar-container disk-bar-container" @mouseenter="showDiskTooltip = true" @mouseleave="showDiskTooltip = false">
+        <div class="progress-bar-container disk-bar-container" @mouseenter="handleTooltipEnter($event, 'disk')" @mouseleave="showDiskTooltip = false">
           <div class="progress-bar-bg disk-total">
              <div class="progress-bar-limit disk-used" :style="{ width: ((status.diskTotalSpace - status.diskFreeSpace) / status.diskTotalSpace * 100) + '%' }">
                 <div class="progress-bar-fill disk-world" :style="{ width: (status.gameFolderSize / (status.diskTotalSpace - status.diskFreeSpace) * 100) + '%' }"></div>
@@ -60,7 +60,7 @@
           </div>
           <div class="progress-label">{{ formatMemoryInt(status.gameFolderSize) }} / {{ formatMemoryInt(status.diskTotalSpace - status.diskFreeSpace) }} / {{ formatMemoryInt(status.diskTotalSpace) }}</div>
 
-          <div class="tooltip" v-if="showDiskTooltip">
+          <div class="tooltip" :class="{ 'show-below': showDiskBelow }" v-if="showDiskTooltip">
             <div class="tooltip-title">{{ $t('summary.diskUsage') }}</div>
             <div class="inline-legend-tooltip">
               <div><span class="dot world-dot"></span> {{ $t('summary.gameFolderSize') }}: {{ formatMemory(status.gameFolderSize) }}</div>
@@ -239,6 +239,26 @@ const showWhitelist = ref(false);
 const showCores = ref(false);
 const showMemTooltip = ref(false);
 const showDiskTooltip = ref(false);
+const showCoresBelow = ref(false);
+const showMemBelow = ref(false);
+const showDiskBelow = ref(false);
+
+const handleTooltipEnter = (event, type) => {
+  // Show the right tooltip
+  if (type === 'cores') showCores.value = true;
+  else if (type === 'mem') showMemTooltip.value = true;
+  else if (type === 'disk') showDiskTooltip.value = true;
+
+  // Check if tooltip would overflow the top of the viewport
+  const el = event.currentTarget;
+  const rect = el.getBoundingClientRect();
+  // Estimate tooltip height ~120px for cores, ~80px for mem/disk
+  const tooltipHeight = type === 'cores' ? 130 : 90;
+  const showBelow = rect.top < tooltipHeight + 20;
+  if (type === 'cores') showCoresBelow.value = showBelow;
+  else if (type === 'mem') showMemBelow.value = showBelow;
+  else if (type === 'disk') showDiskBelow.value = showBelow;
+};
 
 const whitelistPlayers = computed(() => {
   if (!status.value?.properties?.whitelistPlayers) return [];
@@ -486,6 +506,18 @@ onUnmounted(() => {
   border-style: solid;
   border-color: var(--tooltip-bg) transparent transparent transparent;
   filter: drop-shadow(0 2px 2px var(--shadow-color));
+}
+.tooltip.show-below {
+  bottom: auto;
+  top: 100%;
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+.tooltip.show-below::after {
+  top: auto;
+  bottom: 100%;
+  border-color: transparent transparent var(--tooltip-bg) transparent;
+  filter: drop-shadow(0 -2px 2px var(--shadow-color));
 }
 .tooltip-title, .whitelist-tooltip-title {
   font-weight: 600;

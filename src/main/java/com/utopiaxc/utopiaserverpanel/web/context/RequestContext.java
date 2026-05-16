@@ -17,6 +17,7 @@ public class RequestContext {
     private final String path;
     private final String method;
     private final Map<String, String> queryParams;
+    private final Map<String, String> pathParams = new LinkedHashMap<>();
     private final Map<String, String> responseHeaders = new LinkedHashMap<>();
     private final Map<String, Object> attributes = new HashMap<>();
     private boolean responded = false;
@@ -53,6 +54,12 @@ public class RequestContext {
 
     public void setAttribute(String key, Object value) { attributes.put(key, value); }
     public Object getAttribute(String key) { return attributes.get(key); }
+
+    /** Set a path parameter (extracted from route matching). */
+    public void setPathParam(String key, String value) { pathParams.put(key, value); }
+
+    /** Get a path parameter by name. */
+    public String pathParam(String key) { return pathParams.get(key); }
 
     public boolean isResponded() { return responded; }
     public void markResponded() { responded = true; }

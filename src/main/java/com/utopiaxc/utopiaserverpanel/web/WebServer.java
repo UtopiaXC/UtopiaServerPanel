@@ -2,8 +2,10 @@ package com.utopiaxc.utopiaserverpanel.web;
 
 import com.utopiaxc.utopiaserverpanel.Config;
 import com.utopiaxc.utopiaserverpanel.UtopiaServerPanel;
-import com.utopiaxc.utopiaserverpanel.web.controller.StatusController;
-import com.utopiaxc.utopiaserverpanel.web.controller.WebSocketController;
+import com.utopiaxc.utopiaserverpanel.web.controller.*;
+import com.utopiaxc.utopiaserverpanel.web.db.MyBatisFactory;
+import com.utopiaxc.utopiaserverpanel.web.db.Schema;
+import com.utopiaxc.utopiaserverpanel.web.middleware.AuthMiddleware;
 import com.utopiaxc.utopiaserverpanel.web.middleware.CorsMiddleware;
 import com.utopiaxc.utopiaserverpanel.web.middleware.MiddlewarePipeline;
 import com.utopiaxc.utopiaserverpanel.web.router.Router;
@@ -39,19 +41,58 @@ public class WebServer {
 
     /**
      * Start the web server on the given port.
-     * Registers middlewares and API routes, then binds the Netty server.
+     * Initializes database, registers middlewares and API routes, then binds Netty.
      */
     public static void start(MinecraftServer ms, int port) {
         minecraftServer = ms;
         startTime = System.currentTimeMillis();
 
-        // Register middlewares
-        MiddlewarePipeline.getInstance()
-                .use(new CorsMiddleware());
+        // ── Initialize database ──
+        String configDir = ms.getServerDirectory().resolve("config").toAbsolutePath().toString();
+        MyBatisFactory.initialize(configDir);
+        Schema.initialize();
 
-        // Register API routes
-        Router.getInstance()
-                .get("/api/status", StatusController::getStatus);
+        // ── Register middlewares ──
+        MiddlewarePipeline.getInstance()
+                .use(new CorsMiddleware())
+                .use(new AuthMiddleware());
+
+        // ── Register API routes ──
+        Router router = Router.getInstance();
+
+        // Existing - status is public (no auth required)
+        router.get("/api/status", StatusController::getStatus);
+
+        // Auth (whitelisted in AuthMiddleware)
+        router.post("/api/auth/login", AuthController::login);
+        router.post("/api/auth/refresh", AuthController::refresh);
+        router.post("/api/auth/logout", AuthController::logout);
+        router.post("/api/auth/register", AuthController::register);
+
+        // Auth (authenticated)
+        router.post("/api/auth/change-password", AuthController::changePassword);
+        router.get("/api/auth/me", AuthController::me);
+        router.get("/api/auth/permissions", AuthController::permissions);
+
+        // Admin - Users
+        router.get("/api/admin/users", AdminController::listUsers, "admin.users.read");
+        router.post("/api/admin/users", AdminController::createUser, "admin.users.edit");
+        router.put("/api/admin/users/{id}", AdminController::updateUser, "admin.users.edit");
+        router.delete("/api/admin/users/{id}", AdminController::deleteUser, "admin.users.edit");
+
+        // Admin - Roles
+        router.get("/api/admin/roles", AdminController::listRoles, "admin.roles.read");
+        router.get("/api/admin/roles/{id}", AdminController::getRole, "admin.roles.read");
+        router.post("/api/admin/roles", AdminController::createRole, "admin.roles.edit");
+        router.put("/api/admin/roles/{id}", AdminController::updateRole, "admin.roles.edit");
+        router.delete("/api/admin/roles/{id}", AdminController::deleteRole, "admin.roles.edit");
+
+        // Admin - Permissions
+        router.get("/api/admin/permissions", AdminController::listPermissions, "admin.roles.read");
+
+        // Binding
+        router.post("/api/binding/bind", BindingController::bind, "auth.binding.manage");
+        router.post("/api/binding/unbind", BindingController::unbind, "auth.binding.manage");
 
         // Start Netty
         bossGroup = new NioEventLoopGroup(1);
@@ -120,6 +161,7 @@ public class WebServer {
         // Clean up singletons for potential re-registration on server restart
         Router.getInstance().clear();
         MiddlewarePipeline.getInstance().clear();
+        MyBatisFactory.shutdown();
 
         UtopiaServerPanel.LOGGER.info("UtopiaServerPanel web server stopped");
     }

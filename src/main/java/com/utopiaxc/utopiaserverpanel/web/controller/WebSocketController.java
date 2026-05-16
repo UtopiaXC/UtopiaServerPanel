@@ -73,6 +73,10 @@ public final class WebSocketController {
                         ctx.channel().writeAndFlush(new TextWebSocketFrame(completionsJson));
                     }
                 }
+                case "fetch_command_history" -> {
+                    String historyJson = TerminalService.getCommandHistoryJson();
+                    ctx.channel().writeAndFlush(new TextWebSocketFrame(historyJson));
+                }
             }
         } catch (Exception e) {
             UtopiaServerPanel.LOGGER.error("WebSocket message handling error", e);

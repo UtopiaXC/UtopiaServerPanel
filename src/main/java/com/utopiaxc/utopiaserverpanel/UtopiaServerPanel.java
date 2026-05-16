@@ -1,5 +1,6 @@
 package com.utopiaxc.utopiaserverpanel;
 
+import com.utopiaxc.utopiaserverpanel.command.USPCommands;
 import com.utopiaxc.utopiaserverpanel.terminal.TerminalCapture;
 import com.utopiaxc.utopiaserverpanel.web.WebServer;
 import org.slf4j.Logger;
@@ -22,6 +23,7 @@ public class UtopiaServerPanel {
     public UtopiaServerPanel(ModContainer modContainer) {
         TerminalCapture.register();
         NeoForge.EVENT_BUS.register(this);
+        NeoForge.EVENT_BUS.register(new USPCommands());
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
     }
 

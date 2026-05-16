@@ -9,10 +9,13 @@ import com.utopiaxc.utopiaserverpanel.terminal.TerminalCapture;
 import net.minecraft.server.MinecraftServer;
 
 import java.util.List;
+import java.util.LinkedList;
 import java.util.concurrent.ExecutionException;
 
 public class TerminalService {
     private static final Gson GSON = new Gson();
+    private static final LinkedList<String> commandHistory = new LinkedList<>();
+    private static final int MAX_HISTORY = 100;
 
     public static String getLogsJson() {
         List<String> logs = TerminalCapture.getLogs();
@@ -33,6 +36,11 @@ public class TerminalService {
     public static void executeCommand(MinecraftServer minecraftServer, String command) {
         if (command.trim().isEmpty()) return;
         String cmd = command.trim();
+        // Store in history
+        if (commandHistory.isEmpty() || !commandHistory.getLast().equals(cmd)) {
+            commandHistory.addLast(cmd);
+            if (commandHistory.size() > MAX_HISTORY) commandHistory.removeFirst();
+        }
         minecraftServer.execute(() -> {
             minecraftServer.getCommands().performPrefixedCommand(
                     minecraftServer.createCommandSourceStack(), cmd);
@@ -76,5 +84,17 @@ public class TerminalService {
         } catch (Exception e) {
         }
         return players;
+    }
+
+    /** Return command history as a JSON WebSocket message. */
+    public static String getCommandHistoryJson() {
+        JsonArray arr = new JsonArray();
+        for (String cmd : commandHistory) {
+            arr.add(cmd);
+        }
+        JsonObject wsMsg = new JsonObject();
+        wsMsg.addProperty("type", "command_history");
+        wsMsg.add("data", arr);
+        return GSON.toJson(wsMsg);
     }
 }

@@ -7,7 +7,8 @@ const listeners = {
   status_delta: [],
   logs: [],
   new_log: [],
-  completions: []
+  completions: [],
+  command_history: []
 };
 
 function connectWebSocket() {
@@ -83,4 +84,8 @@ export function fetchCompletions(command, requestId) {
 
 export function sendCommand(command) {
   send('execute_command', { command });
+}
+
+export function fetchCommandHistory() {
+  send('fetch_command_history', {});
 }

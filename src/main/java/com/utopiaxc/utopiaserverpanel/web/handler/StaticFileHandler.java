@@ -27,17 +27,22 @@ public final class StaticFileHandler {
 
         String resourcePath = RESOURCE_PREFIX + path;
         byte[] content = loadResource(resourcePath);
+        boolean isSpaFallback = false;
 
         // SPA fallback: non-file paths serve index.html
         if (content == null && !path.contains(".")) {
             content = loadResource(RESOURCE_PREFIX + "/index.html");
+            isSpaFallback = true;
         }
 
         if (content == null) {
             return false;
         }
 
-        String contentType = guessContentType(path);
+        // Use the actual file path for content type, not the request path
+        String contentType = isSpaFallback
+                ? "text/html; charset=utf-8"
+                : guessContentType(path);
         ResponseHelper.sendFile(ctx, content, contentType);
         return true;
     }
