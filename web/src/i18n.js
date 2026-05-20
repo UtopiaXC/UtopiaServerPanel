@@ -142,7 +142,13 @@ const messages = {
       roleUsers: 'users',
       noRoles: 'No roles found.',
       deleteRoleConfirm: 'Are you sure you want to delete this role?',
-      guestRoleHint: 'This role controls what unauthenticated visitors can see.'
+      guestRoleHint: 'This role controls what unauthenticated visitors can see.',
+      changePassword: 'Change Password',
+      currentPassword: 'Current Password',
+      newPassword: 'New Password',
+      confirmPassword: 'Confirm Password',
+      changePasswordBtn: 'Change Password',
+      logout :'Logout'
     },
     user: {
       home: {
@@ -359,7 +365,13 @@ const messages = {
       roleUsers: '用户',
       noRoles: '暂无角色。',
       deleteRoleConfirm: '确认要删除此角色吗？',
-      guestRoleHint: '此角色控制未登录访客的可见内容。'
+      guestRoleHint: '此角色控制未登录访客的可见内容。',
+      changePassword: '修改密码',
+      currentPassword: '当前密码',
+      newPassword: '新密码',
+      confirmPassword: '确认密码',
+      changePasswordBtn: '修改密码',
+      logout: '退出登录'
     },
     user: {
       home: {

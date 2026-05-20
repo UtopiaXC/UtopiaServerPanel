@@ -66,6 +66,7 @@ public final class AuthController {
             data.add("user", GSON.toJsonTree(result.user()));
             ResponseHelper.sendOk(ctx, data);
         } catch (Exception e) {
+            e.printStackTrace();
             ResponseHelper.sendError(ctx, HttpResponseStatus.BAD_REQUEST, "Invalid request body");
         }
     }

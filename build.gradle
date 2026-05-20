@@ -73,7 +73,9 @@ neoForge {
 // so we relocate it into our namespace to make it part of the mod's own module.
 configurations {
     runtimeClasspath.extendsFrom localRuntime
-    shade
+    shade {
+        exclude group: 'org.slf4j'
+    }
 }
 
 repositories {
@@ -123,13 +125,21 @@ dependencies {
 
 // Shadow: merge shaded deps into the mod JAR with package relocation
 shadowJar {
+    mergeServiceFiles()
     configurations = [project.configurations.shade]
     archiveClassifier = ''
     archiveBaseName = base.archivesName
 
     // Relocate to avoid JPMS split-package with MC's built-in Netty modules
     relocate 'io.netty.handler.codec.http', 'com.utopiaxc.utopiaserverpanel.shaded.netty.http'
-    relocate 'org.sqlite', 'com.utopiaxc.utopiaserverpanel.shaded.sqlite'
+    
+    // SQLite JDBC requires careful relocation because it dynamically loads native libraries 
+    // and expects specific package names at runtime (org.sqlite.core.NativeDB).
+    // If we relocate org.sqlite, the JNI library loading fails because the native methods 
+    // are bound to org.sqlite.*, not com.utopiaxc.*.
+    // Let's refrain from relocating org.sqlite to avoid NoClassDefFoundError and JNI errors.
+    // relocate 'org.sqlite', 'com.utopiaxc.utopiaserverpanel.shaded.sqlite'
+    
     relocate 'io.jsonwebtoken', 'com.utopiaxc.utopiaserverpanel.shaded.jjwt'
     relocate 'org.mindrot.jbcrypt', 'com.utopiaxc.utopiaserverpanel.shaded.jbcrypt'
     relocate 'org.apache.ibatis', 'com.utopiaxc.utopiaserverpanel.shaded.ibatis'
