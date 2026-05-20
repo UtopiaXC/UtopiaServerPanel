@@ -6,14 +6,15 @@ import com.utopiaxc.utopiaserverpanel.Config;
 import com.utopiaxc.utopiaserverpanel.web.context.RequestContext;
 import com.utopiaxc.utopiaserverpanel.web.context.ResponseHelper;
 import com.utopiaxc.utopiaserverpanel.web.service.AuthService;
+import com.utopiaxc.utopiaserverpanel.web.service.PermissionService;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
 import java.util.Map;
-import java.util.Set;
 
 /**
  * HTTP controller for authentication endpoints.
- * Handles login, token refresh, logout, password change, registration, and user info.
+ * Handles login, token refresh, logout, password change, registration,
+ * user info, permissions, and username change.
  */
 public final class AuthController {
     private static final Gson GSON = new Gson();
@@ -50,6 +51,13 @@ public final class AuthController {
                 ResponseHelper.sendOk(ctx, data);
                 return;
             }
+
+            // Record login history
+            try {
+                String ipAddress = ctx.nettyCtx().channel().remoteAddress() != null
+                        ? ctx.nettyCtx().channel().remoteAddress().toString() : null;
+                AuthService.recordLogin(result.userId(), ipAddress);
+            } catch (Exception ignored) {}
 
             JsonObject data = new JsonObject();
             data.addProperty("accessToken", result.accessToken());
@@ -148,11 +156,47 @@ public final class AuthController {
     }
 
     /**
+     * PUT /api/auth/username
+     * Body: { "newUsername": "..." }
+     * Requires authentication.
+     */
+    public static void changeUsername(RequestContext ctx) {
+        try {
+            Integer userId = (Integer) ctx.getAttribute("userId");
+            if (userId == null) {
+                ResponseHelper.sendError(ctx, HttpResponseStatus.UNAUTHORIZED, "Authentication required");
+                return;
+            }
+
+            JsonObject body = GSON.fromJson(ctx.body(), JsonObject.class);
+            String newUsername = getString(body, "newUsername");
+
+            if (newUsername == null || newUsername.length() < 3 || newUsername.length() > 32) {
+                ResponseHelper.sendError(ctx, HttpResponseStatus.BAD_REQUEST, "Username must be 3-32 characters");
+                return;
+            }
+
+            if (!newUsername.matches("[a-zA-Z0-9_]+")) {
+                ResponseHelper.sendError(ctx, HttpResponseStatus.BAD_REQUEST, "Username can only contain letters, numbers, and underscores");
+                return;
+            }
+
+            boolean success = AuthService.changeUsername(userId, newUsername);
+            if (success) {
+                ResponseHelper.sendOk(ctx, Map.of("message", "Username changed successfully"));
+            } else {
+                ResponseHelper.sendError(ctx, HttpResponseStatus.BAD_REQUEST, "Username already taken");
+            }
+        } catch (Exception e) {
+            ResponseHelper.sendError(ctx, HttpResponseStatus.BAD_REQUEST, "Invalid request body");
+        }
+    }
+
+    /**
      * POST /api/auth/register
      * Body: { "username": "...", "password": "...", "bindingCode": "..." }
      */
     public static void register(RequestContext ctx) {
-        // Check registration enabled
         if (!Config.ALLOW_REGISTRATION.get()) {
             ResponseHelper.sendError(ctx, HttpResponseStatus.FORBIDDEN, "Registration is disabled");
             return;
@@ -182,7 +226,7 @@ public final class AuthController {
 
     /**
      * GET /api/auth/me
-     * Returns current user info and permissions.
+     * Returns current user info and permission levels.
      * Requires authentication.
      */
     public static void me(RequestContext ctx) {
@@ -198,12 +242,16 @@ public final class AuthController {
             return;
         }
 
+        // Replace old permissions list with level-based map
+        Map<String, Integer> levels = PermissionService.getUserPermissionLevels(userId);
+        userInfo.put("permissions", levels);
+
         ResponseHelper.sendOk(ctx, userInfo);
     }
 
     /**
      * GET /api/auth/permissions
-     * Returns current user's permission keys.
+     * Returns current user's permission levels.
      * Requires authentication.
      */
     public static void permissions(RequestContext ctx) {
@@ -213,8 +261,18 @@ public final class AuthController {
             return;
         }
 
-        Set<String> perms = com.utopiaxc.utopiaserverpanel.web.service.PermissionService.getUserPermissions(userId);
-        ResponseHelper.sendOk(ctx, Map.of("permissions", perms));
+        Map<String, Integer> levels = PermissionService.getUserPermissionLevels(userId);
+        ResponseHelper.sendOk(ctx, Map.of("permissions", levels));
+    }
+
+    /**
+     * GET /api/auth/guest-permissions
+     * Returns the guest role's permission levels (for unauthenticated visitors).
+     * No authentication required.
+     */
+    public static void guestPermissions(RequestContext ctx) {
+        Map<String, Integer> levels = PermissionService.getGuestPermissionLevels();
+        ResponseHelper.sendOk(ctx, Map.of("permissions", levels));
     }
 
     private static String getString(JsonObject obj, String key) {

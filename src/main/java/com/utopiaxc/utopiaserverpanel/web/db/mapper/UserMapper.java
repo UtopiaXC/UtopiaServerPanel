@@ -93,4 +93,7 @@ public interface UserMapper {
 
     @Select("SELECT password_hash FROM users WHERE id = #{id}")
     String getPasswordHash(int id);
+
+    @Update("UPDATE users SET username = #{username}, updated_at = #{updatedAt} WHERE id = #{id}")
+    int updateUsername(Map<String, Object> params);
 }

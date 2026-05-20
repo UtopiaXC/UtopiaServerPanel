@@ -32,18 +32,22 @@ public class HttpRequestDispatcher extends SimpleChannelInboundHandler<FullHttpR
             // 2. API route matching with path param extraction
             Route matched = Router.getInstance().matchAndPopulate(reqCtx.method(), reqCtx.path(), reqCtx);
             if (matched != null) {
-                // 3. Permission check
+                // 3. Permission check (level-based)
                 String requiredPerm = matched.requiredPermission();
                 if (requiredPerm != null) {
                     Integer userId = (Integer) reqCtx.getAttribute("userId");
                     if (userId == null) {
-                        ResponseHelper.sendError(reqCtx, HttpResponseStatus.UNAUTHORIZED, "Authentication required");
-                        return;
-                    }
-                    if (!PermissionService.hasPermission(userId, requiredPerm)) {
-                        ResponseHelper.sendError(reqCtx, HttpResponseStatus.FORBIDDEN,
-                                "Permission denied: " + requiredPerm);
-                        return;
+                        // Unauthenticated: check guest role
+                        if (!PermissionService.guestMeetsRequirement(requiredPerm)) {
+                            ResponseHelper.sendError(reqCtx, HttpResponseStatus.UNAUTHORIZED, "Authentication required");
+                            return;
+                        }
+                    } else {
+                        if (!PermissionService.meetsRequirement(userId, requiredPerm)) {
+                            ResponseHelper.sendError(reqCtx, HttpResponseStatus.FORBIDDEN,
+                                    "Permission denied: " + requiredPerm);
+                            return;
+                        }
                     }
                 }
 

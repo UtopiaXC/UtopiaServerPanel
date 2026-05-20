@@ -3,16 +3,11 @@
     <aside class="sidebar">
       <div class="sidebar-header">
         <router-link to="/dashboard" class="back-link">&larr; {{ $t('admin.backToPanel') }}</router-link>
+        <LanguageSwitcher style="margin-top: 16px;" />
       </div>
       <nav class="sidebar-nav">
-        <router-link v-if="auth.hasPermission('admin.users.read')" to="/admin/users" class="nav-item" active-class="active">
-          <span class="nav-icon"></span> {{ $t('admin.users') }}
-        </router-link>
-        <router-link v-if="auth.hasPermission('admin.roles.read')" to="/admin/roles" class="nav-item" active-class="active">
+        <router-link v-if="auth.hasReadAccess('admin')" to="/admin/roles" class="nav-item" active-class="active">
           <span class="nav-icon"></span> {{ $t('admin.roles') }}
-        </router-link>
-        <router-link to="/admin/profile" class="nav-item" active-class="active">
-          <span class="nav-icon"></span> {{ $t('admin.profile') }}
         </router-link>
       </nav>
     </aside>
@@ -24,6 +19,7 @@
 
 <script setup>
 import { useAuthStore } from '../stores/auth';
+import LanguageSwitcher from '../components/LanguageSwitcher.vue';
 const auth = useAuthStore();
 </script>
 

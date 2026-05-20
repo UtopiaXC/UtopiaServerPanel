@@ -13,6 +13,9 @@ export const authAPI = {
   changePassword(oldPassword, newPassword) {
     return api.post('/auth/change-password', { oldPassword, newPassword });
   },
+  changeUsername(newUsername) {
+    return api.put('/auth/username', { newUsername });
+  },
   register(username, password, bindingCode) {
     return api.post('/auth/register', { username, password, bindingCode });
   },
@@ -21,5 +24,11 @@ export const authAPI = {
   },
   permissions() {
     return api.get('/auth/permissions');
+  },
+  guestPermissions() {
+    return api.get('/auth/guest-permissions');
+  },
+  getPlayerData() {
+    return api.get('/player/me');
   }
 };

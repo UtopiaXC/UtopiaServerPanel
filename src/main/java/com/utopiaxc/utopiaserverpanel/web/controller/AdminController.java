@@ -5,6 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.utopiaxc.utopiaserverpanel.web.context.RequestContext;
 import com.utopiaxc.utopiaserverpanel.web.context.ResponseHelper;
+import com.utopiaxc.utopiaserverpanel.web.service.PermissionLevel;
 import com.utopiaxc.utopiaserverpanel.web.service.PermissionService;
 import com.utopiaxc.utopiaserverpanel.web.service.RoleService;
 import com.utopiaxc.utopiaserverpanel.web.service.UserService;
@@ -168,15 +169,15 @@ public final class AdminController {
                 return;
             }
 
-            Set<String> permissionKeys = new HashSet<>();
-            if (body.has("permissionKeys")) {
-                JsonArray arr = body.getAsJsonArray("permissionKeys");
-                for (int i = 0; i < arr.size(); i++) {
-                    permissionKeys.add(arr.get(i).getAsString());
+            Map<String, Integer> permissionLevels = new LinkedHashMap<>();
+            if (body.has("permissionLevels")) {
+                JsonObject levels = body.getAsJsonObject("permissionLevels");
+                for (String key : levels.keySet()) {
+                    permissionLevels.put(key, levels.get(key).getAsInt());
                 }
             }
 
-            int roleId = RoleService.createRole(name.trim(), description, permissionKeys);
+            int roleId = RoleService.createRole(name.trim(), description, permissionLevels);
             if (roleId >= 0) {
                 Map<String, Object> role = RoleService.getRole(roleId);
                 ResponseHelper.sendOk(ctx, role);
@@ -205,17 +206,17 @@ public final class AdminController {
             JsonObject body = GSON.fromJson(ctx.body(), JsonObject.class);
             String name = getString(body, "name");
             String description = getString(body, "description");
-            Set<String> permissionKeys = null;
+            Map<String, Integer> permissionLevels = null;
 
-            if (body.has("permissionKeys")) {
-                JsonArray arr = body.getAsJsonArray("permissionKeys");
-                permissionKeys = new HashSet<>();
-                for (int i = 0; i < arr.size(); i++) {
-                    permissionKeys.add(arr.get(i).getAsString());
+            if (body.has("permissionLevels")) {
+                JsonObject levels = body.getAsJsonObject("permissionLevels");
+                permissionLevels = new LinkedHashMap<>();
+                for (String key : levels.keySet()) {
+                    permissionLevels.put(key, levels.get(key).getAsInt());
                 }
             }
 
-            RoleService.UpdateRoleResult result = RoleService.updateRole(roleId, name, description, permissionKeys);
+            RoleService.UpdateRoleResult result = RoleService.updateRole(roleId, name, description, permissionLevels);
             switch (result) {
                 case SUCCESS -> {
                     Map<String, Object> role = RoleService.getRole(roleId);
@@ -255,13 +256,28 @@ public final class AdminController {
 
     // ────────────── Permissions ──────────────
 
-    /** GET /api/admin/permissions */
+    /** GET /api/admin/permissions - Returns the 4 permission categories with descriptions. */
     public static void listPermissions(RequestContext ctx) {
-        Map<String, Map<String, List<Map<String, String>>>> allPerms = PermissionService.getAllPermissions();
-        List<String> allKeys = PermissionService.getAllPermissionKeys();
+        // Return the 4 permission categories with their descriptions
+        List<Map<String, String>> permCategories = new ArrayList<>();
+        for (String key : PermissionLevel.PERMISSION_KEYS) {
+            Map<String, String> cat = new LinkedHashMap<>();
+            cat.put("key", key);
+            switch (key) {
+                case "admin" -> cat.put("description", "Administration panel access");
+                case "dashboard" -> cat.put("description", "Server dashboard and status");
+                case "terminal" -> cat.put("description", "Server console and commands");
+                case "logs" -> cat.put("description", "Monitoring logs");
+            }
+            permCategories.add(cat);
+        }
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("permissions", allPerms);
-        result.put("allKeys", allKeys);
+        result.put("categories", permCategories);
+        result.put("levels", List.of(
+            Map.of("value", 0, "label", "deny"),
+            Map.of("value", 1, "label", "readonly"),
+            Map.of("value", 2, "label", "full")
+        ));
         ResponseHelper.sendOk(ctx, result);
     }
 

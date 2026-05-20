@@ -1,10 +1,17 @@
 <template>
   <div class="auth-layout">
+    <div class="lang-switch-container">
+      <LanguageSwitcher />
+    </div>
     <div class="auth-card">
       <router-view />
     </div>
   </div>
 </template>
+
+<script setup>
+import LanguageSwitcher from '../components/LanguageSwitcher.vue';
+</script>
 
 <style scoped>
 .auth-layout {
@@ -14,6 +21,12 @@
   justify-content: center;
   background: var(--bg-color);
   padding: 20px;
+  position: relative;
+}
+.lang-switch-container {
+  position: absolute;
+  top: 20px;
+  right: 20px;
 }
 .auth-card {
   width: 100%;

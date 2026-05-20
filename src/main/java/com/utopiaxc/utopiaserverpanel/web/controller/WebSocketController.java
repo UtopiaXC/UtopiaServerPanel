@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.utopiaxc.utopiaserverpanel.UtopiaServerPanel;
 import com.utopiaxc.utopiaserverpanel.terminal.TerminalCapture;
-import com.utopiaxc.utopiaserverpanel.web.WebServer;
+import com.utopiaxc.utopiaserverpanel.web.cache.PlayerDataCache;
 import com.utopiaxc.utopiaserverpanel.web.handler.WebSocketFrameHandler;
 import com.utopiaxc.utopiaserverpanel.web.service.StatusService;
 import com.utopiaxc.utopiaserverpanel.web.service.TerminalService;
@@ -12,7 +12,9 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 
 /**
- * WebSocket message controller — handles action-based routing.
+ * WebSocket message controller -- handles action-based routing.
+ * No longer holds MinecraftServer references; all game data goes through
+ * the adapter/cache layers.
  */
 public final class WebSocketController {
     private static final Gson GSON = new Gson();
@@ -36,8 +38,16 @@ public final class WebSocketController {
     }
 
     public static void onConnect(ChannelHandlerContext ctx) {
+        // Increment player cache ref count
+        PlayerDataCache.getInstance().addRef();
+        // Send existing logs
         String logsJson = TerminalService.getLogsJson();
         ctx.channel().writeAndFlush(new TextWebSocketFrame(logsJson));
+    }
+
+    public static void onDisconnect(ChannelHandlerContext ctx) {
+        // Decrement player cache ref count
+        PlayerDataCache.getInstance().removeRef();
     }
 
     public static void onMessage(ChannelHandlerContext ctx, String message) {
@@ -46,6 +56,32 @@ public final class WebSocketController {
             if (!req.has("action")) return;
 
             String action = req.get("action").getAsString();
+            String token = req.has("token") && !req.get("token").isJsonNull() ? req.get("token").getAsString() : null;
+
+            int userId = -1;
+            if (token != null) {
+                com.utopiaxc.utopiaserverpanel.auth.JwtUtil.initialize(""); // Ensure initialized
+                io.jsonwebtoken.Claims claims = com.utopiaxc.utopiaserverpanel.auth.JwtUtil.validateToken(token);
+                if (claims != null) {
+                    userId = com.utopiaxc.utopiaserverpanel.auth.JwtUtil.getUserId(claims);
+                }
+            }
+
+            // Helper to check permission
+            boolean hasAccess = false;
+            String reqPerm = switch (action) {
+                case "fetch_status" -> "dashboard:1";
+                case "fetch_logs", "fetch_command_history", "fetch_completions" -> "terminal:1";
+                case "execute_command" -> "terminal:2";
+                default -> null;
+            };
+
+            if (reqPerm != null) {
+                hasAccess = userId == -1 ? 
+                    com.utopiaxc.utopiaserverpanel.web.service.PermissionService.guestMeetsRequirement(reqPerm) : 
+                    com.utopiaxc.utopiaserverpanel.web.service.PermissionService.meetsRequirement(userId, reqPerm);
+                if (!hasAccess) return; // Drop unpermitted WS action
+            }
 
             switch (action) {
                 case "fetch_logs" -> {
@@ -53,15 +89,13 @@ public final class WebSocketController {
                     ctx.channel().writeAndFlush(new TextWebSocketFrame(logsJson));
                 }
                 case "fetch_status" -> {
-                    String statusJson = StatusService.getStatusJson(
-                            WebServer.getMinecraftServer(), WebServer.getStartTime());
+                    String statusJson = StatusService.getStatusJson();
                     ctx.channel().writeAndFlush(new TextWebSocketFrame(statusJson));
                 }
                 case "execute_command" -> {
                     if (req.has("command")) {
                         String cmd = req.get("command").getAsString();
-                        // Echo web-issued command to all terminals
-                        TerminalService.executeCommand(WebServer.getMinecraftServer(), cmd);
+                        TerminalService.executeCommand(cmd);
                         TerminalCapture.addWebLog("> " + cmd);
                     }
                 }
@@ -69,7 +103,7 @@ public final class WebSocketController {
                     if (req.has("command")) {
                         String requestId = req.has("requestId") ? req.get("requestId").getAsString() : "";
                         String completionsJson = TerminalService.getCompletionsJson(
-                                WebServer.getMinecraftServer(), req.get("command").getAsString(), requestId);
+                                req.get("command").getAsString(), requestId);
                         ctx.channel().writeAndFlush(new TextWebSocketFrame(completionsJson));
                     }
                 }
@@ -89,20 +123,19 @@ public final class WebSocketController {
 
         JsonObject wsMsg = new JsonObject();
         wsMsg.addProperty("type", "new_log");
-        // data is already a JSON string (structured log entry)
         wsMsg.addProperty("data_json", logJson);
         String json = GSON.toJson(wsMsg);
         channels.writeAndFlush(new TextWebSocketFrame(json));
     }
 
     /** Broadcast server status to all connected WebSocket clients. */
-    public static void broadcastStatus(net.minecraft.server.MinecraftServer minecraftServer, long startTime) {
+    public static void broadcastStatus() {
         var channels = WebSocketFrameHandler.getChannels();
         if (channels.isEmpty()) return;
 
-        JsonObject currentStatus = StatusService.getStatusObject(minecraftServer, startTime);
+        JsonObject currentStatus = StatusService.getStatusObject();
         JsonObject delta = computeDelta(lastBroadcastedStatus, currentStatus);
-        
+
         lastBroadcastedStatus = currentStatus;
         JsonObject wsMsg = new JsonObject();
         wsMsg.addProperty("type", "status_delta");

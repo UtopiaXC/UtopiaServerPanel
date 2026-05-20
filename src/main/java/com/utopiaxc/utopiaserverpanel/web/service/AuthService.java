@@ -53,7 +53,7 @@ public final class AuthService {
             tokenData.put("createdAt", System.currentTimeMillis() / 1000);
             tokenMapper.insertToken(tokenData);
 
-            Set<String> permissions = getUserPermissions(session, userId);
+            Map<String, Integer> permissions = getUserPermissionLevels(session, userId);
             Map<String, Object> userInfo = buildUserInfo(user, roleId, permissions, session);
 
             return new AuthResult(accessToken, refreshToken, userId, username, roleId,
@@ -94,7 +94,7 @@ public final class AuthService {
             newToken.put("createdAt", System.currentTimeMillis() / 1000);
             tokenMapper.insertToken(newToken);
 
-            Set<String> permissions = getUserPermissions(session, userId);
+            Map<String, Integer> permissions = getUserPermissionLevels(session, userId);
             return new AuthResult(newAccessToken, newRefreshToken, userId, username, roleId,
                     mustChange, null, permissions, false, null);
         });
@@ -233,20 +233,87 @@ public final class AuthService {
             Map<String, Object> user = userMapper.findById(userId);
             if (user == null) return null;
             int roleId = toInt(user.get("roleId"));
-            Set<String> permissions = getUserPermissions(session, userId);
+            Map<String, Integer> permissions = getUserPermissionLevels(session, userId);
             return buildUserInfo(user, roleId, permissions, session);
+        });
+    }
+
+    /**
+     * Change a user's username.
+     * @return true if successful, false if the new username is already taken.
+     */
+    public static boolean changeUsername(int userId, String newUsername) {
+        return MyBatisFactory.doWorkWithResult(session -> {
+            var userMapper = session.getMapper(UserMapper.class);
+            if (userMapper.countByUsername(newUsername) > 0) return false;
+            Map<String, Object> params = new HashMap<>();
+            params.put("id", userId);
+            params.put("username", newUsername);
+            params.put("updatedAt", System.currentTimeMillis() / 1000);
+            userMapper.updateUsername(params);
+            return true;
+        });
+    }
+
+    /**
+     * Record a login event in the login_history table.
+     */
+    public static void recordLogin(int userId, String ipAddress) {
+        MyBatisFactory.doWork(session -> {
+            try {
+                var conn = session.getConnection();
+                var stmt = conn.prepareStatement(
+                    "INSERT INTO login_history (user_id, login_time, ip_address) VALUES (?, ?, ?)");
+                stmt.setInt(1, userId);
+                stmt.setLong(2, System.currentTimeMillis() / 1000);
+                stmt.setString(3, ipAddress);
+                stmt.executeUpdate();
+            } catch (Exception e) {
+                UtopiaServerPanel.LOGGER.debug("Failed to record login: {}", e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Get recent login history for a user.
+     */
+    public static List<Map<String, Object>> getLoginHistory(int userId, int limit) {
+        return MyBatisFactory.doWorkWithResult(session -> {
+            List<Map<String, Object>> result = new ArrayList<>();
+            try {
+                var conn = session.getConnection();
+                var stmt = conn.prepareStatement(
+                    "SELECT login_time, ip_address FROM login_history WHERE user_id = ? ORDER BY login_time DESC LIMIT ?");
+                stmt.setInt(1, userId);
+                stmt.setInt(2, limit);
+                var rs = stmt.executeQuery();
+                while (rs.next()) {
+                    Map<String, Object> entry = new LinkedHashMap<>();
+                    entry.put("loginTime", rs.getLong("login_time"));
+                    entry.put("ipAddress", rs.getString("ip_address"));
+                    result.add(entry);
+                }
+            } catch (Exception e) {
+                UtopiaServerPanel.LOGGER.debug("Failed to get login history: {}", e.getMessage());
+            }
+            return result;
         });
     }
 
     // ── helpers ──
 
-    private static Set<String> getUserPermissions(org.apache.ibatis.session.SqlSession session, int userId) {
+    private static Map<String, Integer> getUserPermissionLevels(org.apache.ibatis.session.SqlSession session, int userId) {
         var permMapper = session.getMapper(PermissionMapper.class);
-        return new HashSet<>(permMapper.getKeysByUserId(userId));
+        List<Map<String, Object>> levels = permMapper.getUserPermissionLevels(userId);
+        Map<String, Integer> result = new LinkedHashMap<>();
+        for (Map<String, Object> entry : levels) {
+            result.put((String) entry.get("permissionKey"), ((Number) entry.get("level")).intValue());
+        }
+        return result;
     }
 
     private static Map<String, Object> buildUserInfo(Map<String, Object> user, int roleId,
-                                                      Set<String> permissions,
+                                                      Map<String, Integer> permissions,
                                                       org.apache.ibatis.session.SqlSession session) {
         var roleMapper = session.getMapper(RoleMapper.class);
         Map<String, Object> info = new LinkedHashMap<>();
@@ -270,7 +337,7 @@ public final class AuthService {
             info.put("playerName", user.get("playerName"));
             info.put("playerUuid", user.get("playerUuid"));
         }
-        info.put("permissions", new ArrayList<>(permissions));
+        info.put("permissions", permissions);
         return info;
     }
 
@@ -294,7 +361,7 @@ public final class AuthService {
 
     public record AuthResult(String accessToken, String refreshToken, int userId, String username,
                              int roleId, boolean mustChangePassword, Map<String, Object> user,
-                             Set<String> permissions, boolean needsBinding, String errorMessage) {
+                             Map<String, Integer> permissions, boolean needsBinding, String errorMessage) {
         public boolean isSuccess() { return accessToken != null; }
     }
 

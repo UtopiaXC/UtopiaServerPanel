@@ -26,7 +26,7 @@
       {{ $t('auth.haveAccount') }} <router-link to="/login">{{ $t('auth.loginLink') }}</router-link>
     </p>
     <p class="home-link">
-      <router-link to="/dashboard">{{ $t('auth.backHome') }}</router-link>
+      <a href="#" @click.prevent="$router.back()">{{ $t('auth.goBack') }}</a>
     </p>
   </div>
 </template>

@@ -21,7 +21,12 @@ public final class UserService {
             List<Map<String, Object>> users = userMapper.listAll();
             for (Map<String, Object> u : users) {
                 int userId = toInt(u.get("id"));
-                u.put("permissionCount", permMapper.getKeysByUserId(userId).size());
+                List<Map<String, Object>> levels = permMapper.getUserPermissionLevels(userId);
+                Map<String, Integer> permLevels = new LinkedHashMap<>();
+                for (Map<String, Object> entry : levels) {
+                    permLevels.put((String) entry.get("permissionKey"), ((Number) entry.get("level")).intValue());
+                }
+                u.put("permissionLevels", permLevels);
             }
             return users;
         });

@@ -1,8 +1,8 @@
 package com.utopiaxc.utopiaserverpanel.web.controller;
 
-import com.utopiaxc.utopiaserverpanel.web.WebServer;
 import com.utopiaxc.utopiaserverpanel.web.context.RequestContext;
 import com.utopiaxc.utopiaserverpanel.web.context.ResponseHelper;
+import com.utopiaxc.utopiaserverpanel.web.service.StatusService;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
 /**
@@ -14,8 +14,8 @@ public final class StatusController {
 
     /** GET /api/status */
     public static void getStatus(RequestContext ctx) {
-        var statusObj = com.utopiaxc.utopiaserverpanel.web.service.StatusService.getStatusObject(
-                WebServer.getMinecraftServer(), WebServer.getStartTime());
+        var statusObj = StatusService.getStatusObject();
         ResponseHelper.sendJson(ctx, HttpResponseStatus.OK, statusObj);
     }
 }
+

@@ -73,7 +73,7 @@ public final class MyBatisFactory {
             UtopiaServerPanel.LOGGER.warn("Failed to set SQLite pragmas", e);
         }
 
-        UtopiaServerPanel.LOGGER.info("MyBatis initialized with SQLite at {}", dbUrl);
+        UtopiaServerPanel.LOGGER.info("MyBatis initialized with SQLite");
     }
 
     @SuppressWarnings("unchecked")

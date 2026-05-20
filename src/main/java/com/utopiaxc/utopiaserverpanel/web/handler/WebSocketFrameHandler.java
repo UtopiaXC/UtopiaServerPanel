@@ -37,6 +37,7 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<TextWebSo
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         channels.remove(ctx.channel());
+        WebSocketController.onDisconnect(ctx);
         super.channelInactive(ctx);
     }
 

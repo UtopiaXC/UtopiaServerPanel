@@ -6,56 +6,55 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * MyBatis mapper for permissions and role_permissions tables.
+ * MyBatis mapper for the level-based permission system.
+ * Uses the {@code role_permission_levels} table with 4 permission keys
+ * (admin, dashboard, terminal, logs) each at level 0 (deny), 1 (readonly), or 2 (full).
  */
 public interface PermissionMapper {
 
-    // ────── Permission definitions ──────
+    // ────── Role permission levels ──────
 
-    @Select("SELECT permission_key, module, group_name, permission_type, description FROM permission_definitions ORDER BY module, group_name, permission_type")
+    /** Get all permission levels for a role as a list of {permissionKey, level} maps. */
+    @Select("SELECT permission_key, level FROM role_permission_levels WHERE role_id = #{roleId}")
     @Results({
-            @Result(property = "key", column = "permission_key"),
-            @Result(property = "module", column = "module"),
-            @Result(property = "groupName", column = "group_name"),
-            @Result(property = "type", column = "permission_type"),
-            @Result(property = "description", column = "description")
+            @Result(property = "permissionKey", column = "permission_key"),
+            @Result(property = "level", column = "level")
     })
-    List<Map<String, Object>> getAllDefinitions();
+    List<Map<String, Object>> getRoleLevels(int roleId);
 
-    @Select("SELECT permission_key FROM permission_definitions ORDER BY module, group_name, permission_type")
-    List<String> getAllKeys();
-
-    @Insert("INSERT OR IGNORE INTO permission_definitions (permission_key, module, group_name, permission_type, description) VALUES (#{key}, #{module}, #{groupName}, #{type}, #{description})")
-    int insertDefinition(Map<String, Object> perm);
-
-    // ────── Role permissions ──────
-
-    @Select("SELECT permission_key FROM role_permissions WHERE role_id = #{roleId}")
-    List<String> getKeysByRoleId(int roleId);
-
+    /** Get a specific permission level for a user (via their role). Returns null if not found. */
     @Select("""
-        SELECT rp.permission_key FROM role_permissions rp
-        JOIN users u ON u.role_id = rp.role_id
+        SELECT rpl.level FROM role_permission_levels rpl
+        JOIN users u ON u.role_id = rpl.role_id
+        WHERE u.id = #{userId} AND u.is_active = 1 AND rpl.permission_key = #{permissionKey}
+    """)
+    Integer getUserPermissionLevel(@Param("userId") int userId, @Param("permissionKey") String permissionKey);
+
+    /** Get all permission levels for a user (via their role). */
+    @Select("""
+        SELECT rpl.permission_key, rpl.level FROM role_permission_levels rpl
+        JOIN users u ON u.role_id = rpl.role_id
         WHERE u.id = #{userId} AND u.is_active = 1
     """)
-    List<String> getKeysByUserId(int userId);
+    @Results({
+            @Result(property = "permissionKey", column = "permission_key"),
+            @Result(property = "level", column = "level")
+    })
+    List<Map<String, Object>> getUserPermissionLevels(int userId);
 
-    @Select("""
-        SELECT COUNT(*) FROM role_permissions rp
-        JOIN users u ON u.role_id = rp.role_id
-        WHERE u.id = #{userId} AND u.is_active = 1 AND rp.permission_key = #{permissionKey}
-    """)
-    int countUserPermission(@Param("userId") int userId, @Param("permissionKey") String permissionKey);
+    /** Set (upsert) a permission level for a role. */
+    @Insert("INSERT OR REPLACE INTO role_permission_levels (role_id, permission_key, level) VALUES (#{roleId}, #{permissionKey}, #{level})")
+    int setRolePermissionLevel(@Param("roleId") int roleId, @Param("permissionKey") String permissionKey, @Param("level") int level);
 
-    @Delete("DELETE FROM role_permissions WHERE role_id = #{roleId}")
+    /** Delete all permission levels for a role. */
+    @Delete("DELETE FROM role_permission_levels WHERE role_id = #{roleId}")
     int deleteByRoleId(int roleId);
 
-    @Insert("INSERT OR IGNORE INTO role_permissions (role_id, permission_key) VALUES (#{roleId}, #{permissionKey})")
-    int insertRolePermission(@Param("roleId") int roleId, @Param("permissionKey") String permissionKey);
+    /** Count how many permission entries exist for a role. */
+    @Select("SELECT COUNT(*) FROM role_permission_levels WHERE role_id = #{roleId}")
+    int countByRoleId(int roleId);
 
-    @Insert("INSERT OR IGNORE INTO role_permissions (role_id, permission_key) SELECT #{roleId}, permission_key FROM permission_definitions")
-    int grantAllToRole(int roleId);
-
+    /** Update role timestamp. */
     @Update("UPDATE roles SET updated_at = #{updatedAt} WHERE id = #{id}")
     int updateRoleTimestamp(Map<String, Object> params);
 }

@@ -2,103 +2,145 @@ package com.utopiaxc.utopiaserverpanel.web.service;
 
 import com.utopiaxc.utopiaserverpanel.web.db.MyBatisFactory;
 import com.utopiaxc.utopiaserverpanel.web.db.mapper.PermissionMapper;
-import com.utopiaxc.utopiaserverpanel.web.db.mapper.RoleMapper;
 
 import java.util.*;
 
 /**
- * Permission service using MyBatis mappers.
+ * Permission service for the level-based permission system.
+ * <p>
+ * 4 permission categories: admin, dashboard, terminal, logs.
+ * 3 levels: 0 (deny), 1 (readonly), 2 (full).
+ * </p>
  */
 public final class PermissionService {
+    /** The guest role ID, used for unauthenticated visitors. */
+    public static final int GUEST_ROLE_ID = 2;
 
     private PermissionService() {}
 
-    public static Map<String, Map<String, List<Map<String, String>>>> getAllPermissions() {
+    /**
+     * Get the permission level for a user on a specific permission key.
+     * @return 0 (deny), 1 (readonly), or 2 (full). Returns 0 if not found.
+     */
+    public static int getUserLevel(int userId, String permKey) {
         return MyBatisFactory.doWorkWithResult(session -> {
             var mapper = session.getMapper(PermissionMapper.class);
-            List<Map<String, Object>> defs = mapper.getAllDefinitions();
+            Integer level = mapper.getUserPermissionLevel(userId, permKey);
+            return level != null ? level : 0;
+        });
+    }
 
-            Map<String, Map<String, List<Map<String, String>>>> result = new LinkedHashMap<>();
-            for (Map<String, Object> d : defs) {
-                String module = (String) d.get("module");
-                String group = (String) d.get("groupName");
-                Map<String, String> perm = new LinkedHashMap<>();
-                perm.put("key", (String) d.get("key"));
-                perm.put("type", (String) d.get("type"));
-                perm.put("description", (String) d.get("description"));
-                result.computeIfAbsent(module, k -> new LinkedHashMap<>())
-                        .computeIfAbsent(group, k -> new ArrayList<>())
-                        .add(perm);
+    /**
+     * Check if a user has at least readonly access to a permission.
+     */
+    public static boolean hasReadAccess(int userId, String permKey) {
+        return getUserLevel(userId, permKey) >= PermissionLevel.READONLY.getLevel();
+    }
+
+    /**
+     * Check if a user has full access to a permission.
+     */
+    public static boolean hasFullAccess(int userId, String permKey) {
+        return getUserLevel(userId, permKey) >= PermissionLevel.FULL.getLevel();
+    }
+
+    /**
+     * Check if a user meets a minimum permission level requirement.
+     * The requirement string is in format "key:level" (e.g., "admin:1" or "terminal:2").
+     */
+    public static boolean meetsRequirement(int userId, String requirement) {
+        if (requirement == null || requirement.isEmpty()) return true;
+        String[] parts = requirement.split(":");
+        if (parts.length != 2) return true;
+        String permKey = parts[0];
+        int minLevel;
+        try {
+            minLevel = Integer.parseInt(parts[1]);
+        } catch (NumberFormatException e) {
+            return true;
+        }
+        return getUserLevel(userId, permKey) >= minLevel;
+    }
+
+    /**
+     * Check if the guest role meets a minimum permission level requirement.
+     */
+    public static boolean guestMeetsRequirement(String requirement) {
+        if (requirement == null || requirement.isEmpty()) return true;
+        String[] parts = requirement.split(":");
+        if (parts.length != 2) return true;
+        String permKey = parts[0];
+        int minLevel;
+        try {
+            minLevel = Integer.parseInt(parts[1]);
+        } catch (NumberFormatException e) {
+            return true;
+        }
+        return getRoleLevel(GUEST_ROLE_ID, permKey) >= minLevel;
+    }
+
+    /**
+     * Get all permission levels for a user as a map of {permKey -> level}.
+     */
+    public static Map<String, Integer> getUserPermissionLevels(int userId) {
+        return MyBatisFactory.doWorkWithResult(session -> {
+            var mapper = session.getMapper(PermissionMapper.class);
+            List<Map<String, Object>> levels = mapper.getUserPermissionLevels(userId);
+            Map<String, Integer> result = new LinkedHashMap<>();
+            for (Map<String, Object> entry : levels) {
+                result.put((String) entry.get("permissionKey"), ((Number) entry.get("level")).intValue());
             }
             return result;
         });
     }
 
-    public static Set<String> getUserPermissions(int userId) {
+    /**
+     * Get all permission levels for a role as a map of {permKey -> level}.
+     */
+    public static Map<String, Integer> getRoleLevels(int roleId) {
         return MyBatisFactory.doWorkWithResult(session -> {
             var mapper = session.getMapper(PermissionMapper.class);
-            return new HashSet<>(mapper.getKeysByUserId(userId));
+            List<Map<String, Object>> levels = mapper.getRoleLevels(roleId);
+            Map<String, Integer> result = new LinkedHashMap<>();
+            for (Map<String, Object> entry : levels) {
+                result.put((String) entry.get("permissionKey"), ((Number) entry.get("level")).intValue());
+            }
+            return result;
         });
     }
 
-    public static boolean hasPermission(int userId, String permissionKey) {
-        if (permissionKey == null || permissionKey.isEmpty()) return true;
-        return MyBatisFactory.doWorkWithResult(session -> {
-            var mapper = session.getMapper(PermissionMapper.class);
-            return mapper.countUserPermission(userId, permissionKey) > 0;
-        });
+    /**
+     * Get the guest role's permission levels.
+     */
+    public static Map<String, Integer> getGuestPermissionLevels() {
+        return getRoleLevels(GUEST_ROLE_ID);
     }
 
-    public static Set<String> getRolePermissions(int roleId) {
-        return MyBatisFactory.doWorkWithResult(session -> {
-            var mapper = session.getMapper(PermissionMapper.class);
-            return new HashSet<>(mapper.getKeysByRoleId(roleId));
-        });
+    /**
+     * Get a specific role's permission level for a key.
+     */
+    public static int getRoleLevel(int roleId, String permKey) {
+        Map<String, Integer> levels = getRoleLevels(roleId);
+        return levels.getOrDefault(permKey, 0);
     }
 
-    public static boolean setRolePermissions(int roleId, Set<String> permissionKeys) {
+    /**
+     * Set all permission levels for a role.
+     * @param roleId the role ID
+     * @param levels map of {permKey -> level}
+     */
+    public static boolean setRoleLevels(int roleId, Map<String, Integer> levels) {
         return MyBatisFactory.doWorkWithResult(session -> {
             var mapper = session.getMapper(PermissionMapper.class);
             mapper.deleteByRoleId(roleId);
-            for (String key : permissionKeys) {
-                mapper.insertRolePermission(roleId, key);
+            for (var entry : levels.entrySet()) {
+                mapper.setRolePermissionLevel(roleId, entry.getKey(), entry.getValue());
             }
             Map<String, Object> ts = new HashMap<>();
             ts.put("id", roleId);
             ts.put("updatedAt", System.currentTimeMillis() / 1000);
             mapper.updateRoleTimestamp(ts);
             return true;
-        });
-    }
-
-    public static List<String> getAllPermissionKeys() {
-        return MyBatisFactory.doWorkWithResult(session -> {
-            var mapper = session.getMapper(PermissionMapper.class);
-            return mapper.getAllKeys();
-        });
-    }
-
-    public static Map<String, Map<String, List<Map<String, Object>>>> getRolePermissionsGrouped(int roleId) {
-        return MyBatisFactory.doWorkWithResult(session -> {
-            var permMapper = session.getMapper(PermissionMapper.class);
-            Set<String> granted = new HashSet<>(permMapper.getKeysByRoleId(roleId));
-            List<Map<String, Object>> defs = permMapper.getAllDefinitions();
-
-            Map<String, Map<String, List<Map<String, Object>>>> result = new LinkedHashMap<>();
-            for (Map<String, Object> d : defs) {
-                String module = (String) d.get("module");
-                String group = (String) d.get("groupName");
-                String key = (String) d.get("key");
-                Map<String, Object> perm = new LinkedHashMap<>();
-                perm.put("key", key);
-                perm.put("type", d.get("type"));
-                perm.put("description", d.get("description"));
-                perm.put("granted", granted.contains(key));
-                result.computeIfAbsent(module, k -> new LinkedHashMap<>())
-                        .computeIfAbsent(group, k -> new ArrayList<>())
-                        .add(perm);
-            }
-            return result;
         });
     }
 }

@@ -1,122 +1,357 @@
 <template>
-  <div class="profile-page">
-    <div class="page-header">
-      <h2>{{ $t('admin.profile') }}</h2>
-      <div class="header-actions">
-        <router-link v-if="auth.hasPermission('admin.read')" to="/admin" class="btn-admin">&#9881; {{ $t('admin.adminPanel') }}</router-link>
-        <button class="btn-logout" @click="handleLogout">{{ $t('admin.logout') }}</button>
-      </div>
-    </div>
+  <div class="user-profile">
+    <h2>{{ $t('user.profile.title') }}</h2>
 
-    <!-- Force action banner -->
-    <div v-if="auth.mustChangePassword" class="force-banner">{{ $t('auth.mustChangePwBanner') }}</div>
-    <div v-else-if="!auth.isAdmin && auth.bindingStatus !== 'bound'" class="force-banner bind-banner">{{ $t('auth.mustBindBanner') }}</div>
-
-    <!-- Player Server Data -->
-    <div class="section" v-if="auth.user?.playerName">
-      <h3>{{ $t('admin.playerSection') }}: {{ auth.user.playerName }}</h3>
-      <div v-if="!playerLoading">
-        <div class="status-badge" :class="playerOnline?'online':'offline'">{{ playerOnline?'&#x1F7E2; '+$t('admin.online'):'&#x26AB; '+$t('admin.offline') }}</div>
-        <div class="player-details" v-if="playerOnline&&playerData">
-          <div class="detail-item"><span class="label">{{ $t('admin.dimension') }}</span><span>{{ playerData.dimension }}</span></div>
-          <div class="detail-item"><span class="label">{{ $t('admin.gamemode') }}</span><span>{{ playerData.gamemode }}</span></div>
-          <div class="detail-item"><span class="label">{{ $t('admin.health') }}</span><span>{{ playerData.health }}</span></div>
-          <div class="detail-item"><span class="label">{{ $t('admin.position') }}</span><span>{{ playerData.pos }}</span></div>
-        </div>
-        <p v-if="!playerOnline" class="offline-hint">{{ $t('admin.notOnline') }}</p>
-      </div>
-      <p v-else class="loading-text">{{ $t('admin.loadingPlayer') }}</p>
-    </div>
-
-    <!-- Account Info -->
-    <div class="section" v-if="auth.user">
-      <h3>{{ $t('admin.accountInfo') }}</h3>
-      <div class="info-grid">
-        <div class="info-item"><span class="label">{{ $t('admin.username') }}</span><span>{{ auth.user.username }}</span></div>
-        <div class="info-item"><span class="label">{{ $t('admin.role') }}</span><span class="badge">{{ auth.user.roleName }}</span></div>
-        <div class="info-item"><span class="label">{{ $t('admin.binding') }}</span><span :class="auth.user.bindingStatus=='bound'?'text-green':'text-red'">{{ auth.user.bindingStatus }}</span></div>
-        <div class="info-item" v-if="auth.user.playerName"><span class="label">{{ $t('admin.playerSection') }}</span><span>{{ auth.user.playerName }}</span></div>
-      </div>
-    </div>
-
-    <!-- Change Username -->
+    <!-- Self Profile Section -->
     <div class="section">
-      <h3>{{ $t('admin.changeUsername') || 'Change Username' }}</h3>
-      <form @submit.prevent="changeUsername">
-        <div class="form-group"><label>{{ $t('admin.newUsername') || 'New Username' }}</label><input v-model="un.newUsername" type="text" required minlength="3" /></div>
-        <div v-if="unError" class="error-msg">{{ unError }}</div>
-        <div v-if="unSuccess" class="success-msg">{{ unSuccess }}</div>
-        <button class="btn-primary" :disabled="unLoading">{{ unLoading?'...':($t('admin.changeBtn') || 'Change') }}</button>
-      </form>
-    </div>
+      <h3>{{ $t('user.profile.accountSettings') }}</h3>
 
-    <!-- Change Password -->
-    <div class="section" :class="{'highlight-section':auth.mustChangePassword}">
-      <h3>{{ $t('admin.changePassword') }}</h3>
-      <form @submit.prevent="changePassword">
-        <div class="form-group"><label>{{ $t('admin.currentPassword') }}</label><input v-model="pw.old" type="password" required /></div>
-        <div class="form-group"><label>{{ $t('admin.newPassword') }}</label><input v-model="pw.new1" type="password" required minlength="4" /></div>
-        <div class="form-group"><label>{{ $t('admin.confirmNewPassword') }}</label><input v-model="pw.new2" type="password" required /></div>
-        <div v-if="pwError" class="error-msg">{{ pwError }}</div>
-        <div v-if="pwSuccess" class="success-msg">{{ pwSuccess }}</div>
-        <button class="btn-primary" :disabled="pwLoading">{{ pwLoading?'...':$t('admin.changePasswordBtn') }}</button>
-      </form>
-    </div>
-
-    <!-- Player Binding -->
-    <div class="section" :class="{'highlight-section':!auth.isAdmin&&auth.bindingStatus!=='bound'}">
-      <h3>{{ $t('admin.playerBinding') }}</h3>
-      <div v-if="auth.bindingStatus=='bound'" class="bound-info">
-        <p class="text-green">&check; {{ $t('admin.boundTo') }} {{ auth.user?.playerName }}</p>
-        <button class="btn-danger" @click="handleUnbind" :disabled="unbindLoading">{{ $t('admin.unbind') }}</button>
-        <div v-if="unbindMsg" class="info-msg">{{ unbindMsg }}</div>
+      <!-- Change Username -->
+      <div class="form-group">
+        <label>{{ $t('user.profile.changeUsername') }}</label>
+        <div class="input-row">
+          <input type="text" v-model="newUsername" :placeholder="auth.user?.username" />
+          <button class="btn-primary" @click="submitUsername" :disabled="!newUsername || newUsername === auth.user?.username">
+            {{ $t('common.save') }}
+          </button>
+        </div>
+        <p v-if="usernameMsg" :class="usernameMsgType">{{ usernameMsg }}</p>
       </div>
-      <div v-else>
-        <p class="text-red">{{ $t('admin.notBound') }} {{ $t('admin.bindPrompt') }}</p>
-        <form @submit.prevent="handleBind">
-          <div class="form-group"><label>{{ $t('admin.bindingCode') }}</label>
-            <div class="bind-input-row">
-              <input v-model="bindCode" type="text" placeholder="" maxlength="6" required style="text-transform:uppercase;letter-spacing:4px;text-align:center;font-size:1.2rem;font-family:monospace;width:140px" />
-              <button class="btn-primary" :disabled="bindLoading">{{ bindLoading?'...':$t('admin.bind') }}</button>
-            </div>
+
+      <!-- Change Password -->
+      <div class="form-group">
+        <label>{{ $t('user.profile.changePassword') }}</label>
+        <div class="input-col">
+          <input type="password" v-model="oldPassword" :placeholder="$t('user.profile.currentPassword')" />
+          <input type="password" v-model="newPassword" :placeholder="$t('user.profile.newPassword')" />
+          <input type="password" v-model="confirmPassword" :placeholder="$t('user.profile.confirmPassword')" />
+          <button class="btn-primary" @click="submitPassword" :disabled="!oldPassword || !newPassword || !confirmPassword">
+            {{ $t('common.save') }}
+          </button>
+        </div>
+        <p v-if="passwordMsg" :class="passwordMsgType">{{ passwordMsg }}</p>
+      </div>
+
+      <!-- Player Binding -->
+      <div class="form-group">
+        <label>{{ $t('user.profile.playerBinding') }}</label>
+        <div v-if="auth.user?.bindingStatus === 'bound'" class="binding-info">
+          <span>{{ $t('user.profile.boundTo') }}: <strong>{{ auth.user?.playerName }}</strong></span>
+          <button class="btn-danger" @click="showUnbindConfirm = true">{{ $t('user.profile.unbind') }}</button>
+        </div>
+        <div v-else>
+          <router-link to="/user/bind" class="btn-primary">{{ $t('user.home.bindPlayer') }}</router-link>
+        </div>
+      </div>
+
+      <!-- Admin Link -->
+      <div v-if="auth.hasReadAccess('admin')" class="form-group">
+        <router-link to="/admin/roles" class="btn-secondary">{{ $t('user.profile.goToAdmin') }}</router-link>
+      </div>
+    </div>
+
+    <!-- Admin: User Management (only if has admin access) -->
+    <div v-if="auth.hasReadAccess('admin')" class="section">
+      <h3>{{ $t('user.profile.userManagement') }}</h3>
+      <div class="toolbar">
+        <button v-if="auth.hasFullAccess('admin')" class="btn-primary" @click="openCreateUser">{{ $t('user.profile.createUser') }}</button>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>{{ $t('common.username') }}</th>
+              <th>{{ $t('user.profile.roleName') }}</th>
+              <th>{{ $t('user.profile.status') }}</th>
+              <th>{{ $t('user.profile.binding') }}</th>
+              <th v-if="auth.hasFullAccess('admin')">{{ $t('common.actions') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="u in users" :key="u.id">
+              <td>{{ u.id }}</td>
+              <td>{{ u.username }}</td>
+              <td><span class="badge">{{ u.roleName }}</span></td>
+              <td>
+                <span :class="u.isActive ? 'status-ok' : 'status-warn'">
+                  {{ u.isActive ? $t('user.profile.active') : $t('user.profile.inactive') }}
+                </span>
+              </td>
+              <td>{{ $t('user.home.' + (u.bindingStatus || 'unbound')) }}</td>
+              <td v-if="auth.hasFullAccess('admin')">
+                <button class="btn-sm" @click="openEditUser(u)">{{ $t('common.edit') }}</button>
+                <button class="btn-sm btn-danger" @click="confirmDeleteUser(u)" :disabled="u.id === 1">{{ $t('common.delete') }}</button>
+              </td>
+            </tr>
+            <tr v-if="users.length === 0">
+              <td :colspan="auth.hasFullAccess('admin') ? 6 : 5" class="empty">{{ $t('user.profile.noUsers') }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Confirm Unbind Modal -->
+    <div v-if="showUnbindConfirm" class="modal-overlay" @click.self="showUnbindConfirm = false">
+      <div class="modal">
+        <h3>{{ $t('user.profile.confirmUnbind') }}</h3>
+        <p>{{ $t('user.profile.unbindWarning') }}</p>
+        <div class="modal-actions">
+          <button class="btn-secondary" @click="showUnbindConfirm = false">{{ $t('common.cancel') }}</button>
+          <button class="btn-danger" @click="doUnbind">{{ $t('user.profile.unbind') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit/Create User Modal -->
+    <div v-if="showUserModal" class="modal-overlay" @click.self="showUserModal = false">
+      <div class="modal">
+        <h3>{{ editingUser ? $t('user.profile.editUser') : $t('user.profile.createUser') }}</h3>
+        <div class="modal-body">
+          <div class="form-field">
+            <label>{{ $t('common.username') }}</label>
+            <input type="text" v-model="userForm.username" :disabled="!!editingUser" />
           </div>
-        </form>
-        <div v-if="bindError" class="error-msg">{{ bindError }}</div>
-        <div v-if="bindSuccess" class="success-msg">{{ bindSuccess }}</div>
-        <p class="hint">{{ $t('admin.getCodeHint') }} <code>/usp bind</code></p>
+          <div class="form-field">
+            <label>{{ editingUser ? $t('user.profile.newPasswordOptional') : $t('user.profile.password') }}</label>
+            <input type="password" v-model="userForm.password" />
+          </div>
+          <div class="form-field">
+            <label>{{ $t('user.profile.roleName') }}</label>
+            <select v-model="userForm.roleId">
+              <option v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</option>
+            </select>
+          </div>
+          <div v-if="editingUser" class="form-field">
+            <label>
+              <input type="checkbox" v-model="userForm.isActive" /> {{ $t('user.profile.active') }}
+            </label>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-secondary" @click="showUserModal = false">{{ $t('common.cancel') }}</button>
+          <button class="btn-primary" @click="saveUser">{{ $t('common.save') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirm Delete User Modal -->
+    <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="showDeleteConfirm = false">
+      <div class="modal">
+        <h3>{{ $t('user.profile.deleteUser') }}</h3>
+        <p>{{ $t('user.profile.deleteWarning', { username: deletingUser?.username }) }}</p>
+        <div class="modal-actions">
+          <button class="btn-secondary" @click="showDeleteConfirm = false">{{ $t('common.cancel') }}</button>
+          <button class="btn-danger" @click="doDeleteUser">{{ $t('common.delete') }}</button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
+import { ref, onMounted } from 'vue';
 import { useAuthStore } from '../../stores/auth';
-import { bindingAPI } from '../../api/admin';
-import api from '../../api/index.js';
+import { authAPI } from '../../api/auth';
+import api from '../../api/index';
 
-const router=useRouter();const route=useRoute();const auth=useAuthStore();
-const pw=reactive({old:'',new1:'',new2:''});const pwError=ref('');const pwSuccess=ref('');const pwLoading=ref(false);
-const un=reactive({newUsername:''});const unError=ref('');const unSuccess=ref('');const unLoading=ref(false);
-const bindCode=ref('');const bindError=ref('');const bindSuccess=ref('');const bindLoading=ref(false);
-const unbindLoading=ref(false);const unbindMsg=ref('');
-const playerOnline=ref(false);const playerData=ref(null);const playerLoading=ref(false);
+const auth = useAuthStore();
 
-const fetchPlayerStatus=async()=>{if(!auth.user?.playerName)return;playerLoading.value=true;try{const{data}=await api.get('/status');const s=data.data;if(s?.players?.list){const p=s.players.list.find(p=>p.name===auth.user.playerName);if(p){playerOnline.value=true;playerData.value={dimension:p.dimension||'-',gamemode:p.gamemode||'-',health:p.health!=null?String(p.health):'-',pos:p.pos?`${p.pos.x}, ${p.pos.y}, ${p.pos.z}`:'-'}}else{playerOnline.value=false;playerData.value=null}}}catch{}finally{playerLoading.value=false}};
+// Username change
+const newUsername = ref('');
+const usernameMsg = ref('');
+const usernameMsgType = ref('success');
 
-const changePassword=async()=>{pwError.value='';pwSuccess.value='';if(pw.new1!==pw.new2){pwError.value='Passwords do not match';return}pwLoading.value=true;try{await auth.changePassword(pw.old,pw.new1);pwSuccess.value='Password changed!';pw.old='';pw.new1='';pw.new2='';await auth.fetchUser()}catch(e){pwError.value=e.response?.data?.message||'Failed'}finally{pwLoading.value=false}};
+// Password change
+const oldPassword = ref('');
+const newPassword = ref('');
+const confirmPassword = ref('');
+const passwordMsg = ref('');
+const passwordMsgType = ref('success');
 
-const changeUsername=async()=>{unError.value='';unSuccess.value='';unLoading.value=true;try{await auth.changeUsername(un.newUsername);unSuccess.value='Username changed!';un.newUsername='';await auth.fetchUser()}catch(e){unError.value=e.response?.data?.message||'Failed'}finally{unLoading.value=false}};
+// Unbind
+const showUnbindConfirm = ref(false);
 
-const handleBind=async()=>{bindError.value='';bindSuccess.value='';bindLoading.value=true;try{const{data}=await bindingAPI.bind(bindCode.value.toUpperCase());bindSuccess.value=data.data.message;bindCode.value='';await auth.fetchUser();fetchPlayerStatus()}catch(e){bindError.value=e.response?.data?.message||'Binding failed'}finally{bindLoading.value=false}};
+// User management
+const users = ref([]);
+const roles = ref([]);
+const showUserModal = ref(false);
+const editingUser = ref(null);
+const userForm = ref({ username: '', password: '', roleId: 2, isActive: true });
+const showDeleteConfirm = ref(false);
+const deletingUser = ref(null);
 
-const handleUnbind=async()=>{unbindMsg.value='';unbindLoading.value=true;try{await bindingAPI.unbind();unbindMsg.value='Unbound successfully.';playerOnline.value=false;playerData.value=null;await auth.fetchUser()}catch(e){unbindMsg.value=e.response?.data?.message||'Unbind failed'}finally{unbindLoading.value=false}};
+const submitUsername = async () => {
+  try {
+    await auth.changeUsername(newUsername.value);
+    usernameMsg.value = '';
+    usernameMsgType.value = 'success';
+    await auth.fetchUser();
+    usernameMsg.value = 'OK';
+    newUsername.value = '';
+  } catch (e) {
+    usernameMsg.value = e.response?.data?.message || 'Error';
+    usernameMsgType.value = 'error';
+  }
+};
 
-const handleLogout=async()=>{await auth.logout();router.push('/login')};
-onMounted(fetchPlayerStatus);
+const submitPassword = async () => {
+  if (newPassword.value !== confirmPassword.value) {
+    passwordMsg.value = auth.$i18n?.t('user.profile.passwordMismatch') || 'Passwords do not match';
+    passwordMsgType.value = 'error';
+    return;
+  }
+  try {
+    await auth.changePassword(oldPassword.value, newPassword.value);
+    passwordMsg.value = 'OK';
+    passwordMsgType.value = 'success';
+    oldPassword.value = '';
+    newPassword.value = '';
+    confirmPassword.value = '';
+  } catch (e) {
+    passwordMsg.value = e.response?.data?.message || 'Error';
+    passwordMsgType.value = 'error';
+  }
+};
+
+const doUnbind = async () => {
+  try {
+    await api.post('/binding/unbind');
+    showUnbindConfirm.value = false;
+    await auth.fetchUser();
+  } catch (e) {
+    console.error('Unbind failed', e);
+  }
+};
+
+const loadUsers = async () => {
+  try {
+    const { data } = await api.get('/admin/users');
+    users.value = data.data.users || [];
+  } catch { /* ignore */ }
+};
+
+const loadRoles = async () => {
+  try {
+    const { data } = await api.get('/admin/roles');
+    roles.value = data.data.roles || [];
+  } catch { /* ignore */ }
+};
+
+const openCreateUser = () => {
+  editingUser.value = null;
+  userForm.value = { username: '', password: '', roleId: 2, isActive: true };
+  showUserModal.value = true;
+};
+
+const openEditUser = (u) => {
+  editingUser.value = u;
+  userForm.value = { username: u.username, password: '', roleId: u.roleId, isActive: u.isActive };
+  showUserModal.value = true;
+};
+
+const saveUser = async () => {
+  try {
+    if (editingUser.value) {
+      const body = { roleId: userForm.value.roleId, isActive: userForm.value.isActive };
+      if (userForm.value.password) body.newPassword = userForm.value.password;
+      await api.put(`/admin/users/${editingUser.value.id}`, body);
+    } else {
+      await api.post('/admin/users', {
+        username: userForm.value.username,
+        password: userForm.value.password,
+        roleId: userForm.value.roleId
+      });
+    }
+    showUserModal.value = false;
+    await loadUsers();
+  } catch (e) {
+    alert(e.response?.data?.message || 'Error');
+  }
+};
+
+const confirmDeleteUser = (u) => {
+  deletingUser.value = u;
+  showDeleteConfirm.value = true;
+};
+
+const doDeleteUser = async () => {
+  try {
+    await api.delete(`/admin/users/${deletingUser.value.id}`);
+    showDeleteConfirm.value = false;
+    deletingUser.value = null;
+    await loadUsers();
+  } catch (e) {
+    alert(e.response?.data?.message || 'Error');
+  }
+};
+
+onMounted(async () => {
+  if (auth.hasReadAccess('admin')) {
+    await Promise.all([loadUsers(), loadRoles()]);
+  }
+});
 </script>
 
 <style scoped>
-.profile-page{max-width:600px}.page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}.page-header h2{color:var(--text-strong);margin:0}.header-actions{display:flex;gap:8px}.btn-admin{display:inline-flex;align-items:center;gap:4px;padding:6px 14px;background:var(--primary-color);color:#fff;border-radius:6px;text-decoration:none;font-size:.85rem;font-weight:500}.btn-admin:hover{opacity:.9}.btn-logout{padding:6px 14px;background:transparent;border:1px solid var(--border-color);border-radius:6px;color:var(--text-secondary);cursor:pointer;font-size:.85rem}.btn-logout:hover{border-color:#ef4444;color:#ef4444}.force-banner{padding:10px 16px;border-radius:8px;font-weight:600;font-size:.9rem;margin-bottom:16px}.force-banner{background:#fef3c7;border:1px solid #fcd34d;color:#92400e}.force-banner.bind-banner{background:#dbeafe;border:1px solid #93c5fd;color:#1e40af}.highlight-section{border-color:var(--primary-color)!important;box-shadow:0 0 0 2px rgba(59,130,246,.2)}.section{background:var(--card-bg);border:1px solid var(--border-color);border-radius:10px;padding:20px;margin-bottom:16px}.section h3{margin:0 0 14px;color:var(--text-strong);font-size:1rem}.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.info-item{display:flex;flex-direction:column;gap:2px}.label{font-size:.8rem;color:var(--text-secondary)}.badge{background:var(--bg-color);padding:2px 8px;border-radius:4px;font-size:.8rem;display:inline-block;width:fit-content}.text-green{color:#16a34a}.text-red{color:#dc2626}.status-badge{display:inline-block;padding:4px 12px;border-radius:20px;font-weight:600;font-size:.85rem;margin-bottom:10px}.status-badge.online{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}.status-badge.offline{background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0}.player-details{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.detail-item{display:flex;flex-direction:column;gap:2px;font-size:.9rem}.offline-hint{font-size:.85rem;color:var(--text-secondary);margin:8px 0 0}.loading-text{font-size:.85rem;color:var(--text-secondary)}.form-group{margin-bottom:12px}.form-group label{display:block;margin-bottom:4px;font-size:.85rem;color:var(--text-secondary)}.form-group input{width:100%;padding:8px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-color);color:var(--text-strong);box-sizing:border-box}.bind-input-row{display:flex;gap:10px;align-items:center}.btn-primary{padding:8px 18px;background:var(--primary-color);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:.9rem}.btn-primary:disabled{opacity:.6}.btn-danger{padding:8px 18px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:6px;cursor:pointer;font-size:.9rem}.btn-danger:disabled{opacity:.6}.error-msg{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:8px 12px;border-radius:6px;font-size:.85rem;margin-bottom:8px}.success-msg{background:#f0fdf4;border:1px solid #bbf7d0;color:#16a34a;padding:8px 12px;border-radius:6px;font-size:.85rem;margin-bottom:8px}.info-msg{background:var(--bg-color);padding:8px 12px;border-radius:6px;font-size:.85rem;margin-top:8px;color:var(--text-secondary)}.hint{font-size:.85rem;color:var(--text-secondary);margin-top:8px}.hint code{background:var(--bg-color);padding:2px 6px;border-radius:3px}.bound-info p{margin:0 0 10px}
+.user-profile { max-width: 900px; }
+.user-profile h2 { margin: 0 0 24px; color: var(--text-strong); font-size: 1.4rem; }
+
+.section { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+.section h3 { margin: 0 0 16px; color: var(--text-strong); font-size: 1.1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
+
+.form-group { margin-bottom: 20px; }
+.form-group > label { display: block; color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 8px; font-weight: 500; }
+
+.input-row { display: flex; gap: 10px; }
+.input-row input { flex: 1; }
+.input-col { display: flex; flex-direction: column; gap: 8px; max-width: 400px; }
+
+input, select { padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--card-bg); color: var(--input-text); font-size: 0.9rem; }
+input:focus, select:focus { outline: none; border-color: var(--primary-color); }
+
+.btn-primary { padding: 8px 18px; background: var(--primary-color); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; text-decoration: none; transition: opacity 0.2s; }
+.btn-primary:hover { opacity: 0.9; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-secondary { padding: 8px 18px; background: var(--tab-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; font-size: 0.9rem; text-decoration: none; }
+.btn-secondary:hover { background: var(--tab-hover); }
+
+.btn-danger { padding: 8px 18px; background: #ef4444; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+.btn-danger:hover { background: #dc2626; }
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-sm { padding: 4px 10px; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-primary); cursor: pointer; margin-right: 4px; }
+.btn-sm:hover { background: var(--tab-bg); }
+.btn-sm.btn-danger { border: none; }
+
+p.success { color: #16a34a; font-size: 0.85rem; margin: 6px 0 0; }
+p.error { color: #ef4444; font-size: 0.85rem; margin: 6px 0 0; }
+
+.binding-info { display: flex; align-items: center; gap: 16px; }
+.binding-info span { color: var(--text-primary); }
+
+.toolbar { margin-bottom: 16px; }
+
+.table-container { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; }
+th { background: var(--bg-color); color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; }
+td { color: var(--text-primary); }
+td.empty { text-align: center; color: var(--text-secondary); padding: 24px; }
+
+.badge { padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; background: var(--tab-bg); }
+.status-ok { color: #16a34a; }
+.status-warn { color: #d97706; }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+.modal { background: var(--card-bg); border-radius: 12px; padding: 24px; width: 90%; max-width: 440px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+.modal h3 { margin: 0 0 12px; color: var(--text-strong); }
+.modal p { color: var(--text-secondary); margin: 0 0 16px; font-size: 0.9rem; }
+.modal-body { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.form-field label { display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 4px; }
+.form-field input, .form-field select { width: 100%; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
 </style>

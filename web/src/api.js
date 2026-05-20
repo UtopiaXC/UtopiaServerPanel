@@ -66,7 +66,8 @@ connectWebSocket();
 
 function send(action, payload = {}) {
   if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ action, ...payload }));
+    const token = localStorage.getItem('token');
+    socket.send(JSON.stringify({ action, token, ...payload }));
   }
 }
 

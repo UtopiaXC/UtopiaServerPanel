@@ -2,6 +2,10 @@ package com.utopiaxc.utopiaserverpanel.web;
 
 import com.utopiaxc.utopiaserverpanel.Config;
 import com.utopiaxc.utopiaserverpanel.UtopiaServerPanel;
+import com.utopiaxc.utopiaserverpanel.adapter.AdapterRegistry;
+import com.utopiaxc.utopiaserverpanel.adapter.NeoForgeAdapter;
+import com.utopiaxc.utopiaserverpanel.web.cache.PlayerDataCache;
+import com.utopiaxc.utopiaserverpanel.web.cache.ServerStatusCache;
 import com.utopiaxc.utopiaserverpanel.web.controller.*;
 import com.utopiaxc.utopiaserverpanel.web.db.MyBatisFactory;
 import com.utopiaxc.utopiaserverpanel.web.db.Schema;
@@ -24,7 +28,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Unified Netty-based web server serving both HTTP and WebSocket on a single port.
  * <p>
- * This is the main entry point for the web panel — call {@link #start} from
+ * This is the main entry point for the web panel -- call {@link #start} from
  * the server starting event and {@link #stop} from the server stopping event.
  */
 public class WebServer {
@@ -32,35 +36,35 @@ public class WebServer {
     private static EventLoopGroup workerGroup;
     private static Channel serverChannel;
 
-    private static MinecraftServer minecraftServer;
-    private static long startTime;
     private static ScheduledExecutorService broadcastScheduler;
-
-    public static MinecraftServer getMinecraftServer() { return minecraftServer; }
-    public static long getStartTime() { return startTime; }
 
     /**
      * Start the web server on the given port.
-     * Initializes database, registers middlewares and API routes, then binds Netty.
+     * Initializes adapter, database, caches, middlewares, and API routes, then binds Netty.
      */
     public static void start(MinecraftServer ms, int port) {
-        minecraftServer = ms;
-        startTime = System.currentTimeMillis();
+        long startTime = System.currentTimeMillis();
 
-        // ── Initialize database ──
+        // -- Initialize adapter layer --
+        AdapterRegistry.initialize(new NeoForgeAdapter(ms, startTime));
+
+        // -- Initialize database --
         String configDir = ms.getServerDirectory().resolve("config").toAbsolutePath().toString();
         MyBatisFactory.initialize(configDir);
         Schema.initialize();
 
-        // ── Register middlewares ──
+        // -- Initialize caches --
+        ServerStatusCache.getInstance().start();
+
+        // -- Register middlewares --
         MiddlewarePipeline.getInstance()
                 .use(new CorsMiddleware())
                 .use(new AuthMiddleware());
 
-        // ── Register API routes ──
+        // -- Register API routes --
         Router router = Router.getInstance();
 
-        // Existing - status is public (no auth required)
+        // Status is public (no auth required)
         router.get("/api/status", StatusController::getStatus);
 
         // Auth (whitelisted in AuthMiddleware)
@@ -68,31 +72,36 @@ public class WebServer {
         router.post("/api/auth/refresh", AuthController::refresh);
         router.post("/api/auth/logout", AuthController::logout);
         router.post("/api/auth/register", AuthController::register);
+        router.get("/api/auth/guest-permissions", AuthController::guestPermissions);
 
         // Auth (authenticated)
         router.post("/api/auth/change-password", AuthController::changePassword);
         router.get("/api/auth/me", AuthController::me);
         router.get("/api/auth/permissions", AuthController::permissions);
+        router.put("/api/auth/username", AuthController::changeUsername);
 
         // Admin - Users
-        router.get("/api/admin/users", AdminController::listUsers, "admin.users.read");
-        router.post("/api/admin/users", AdminController::createUser, "admin.users.edit");
-        router.put("/api/admin/users/{id}", AdminController::updateUser, "admin.users.edit");
-        router.delete("/api/admin/users/{id}", AdminController::deleteUser, "admin.users.edit");
+        router.get("/api/admin/users", AdminController::listUsers, "admin:1");
+        router.post("/api/admin/users", AdminController::createUser, "admin:2");
+        router.put("/api/admin/users/{id}", AdminController::updateUser, "admin:2");
+        router.delete("/api/admin/users/{id}", AdminController::deleteUser, "admin:2");
 
         // Admin - Roles
-        router.get("/api/admin/roles", AdminController::listRoles, "admin.roles.read");
-        router.get("/api/admin/roles/{id}", AdminController::getRole, "admin.roles.read");
-        router.post("/api/admin/roles", AdminController::createRole, "admin.roles.edit");
-        router.put("/api/admin/roles/{id}", AdminController::updateRole, "admin.roles.edit");
-        router.delete("/api/admin/roles/{id}", AdminController::deleteRole, "admin.roles.edit");
+        router.get("/api/admin/roles", AdminController::listRoles, "admin:1");
+        router.get("/api/admin/roles/{id}", AdminController::getRole, "admin:1");
+        router.post("/api/admin/roles", AdminController::createRole, "admin:2");
+        router.put("/api/admin/roles/{id}", AdminController::updateRole, "admin:2");
+        router.delete("/api/admin/roles/{id}", AdminController::deleteRole, "admin:2");
 
         // Admin - Permissions
-        router.get("/api/admin/permissions", AdminController::listPermissions, "admin.roles.read");
+        router.get("/api/admin/permissions", AdminController::listPermissions, "admin:1");
 
         // Binding
-        router.post("/api/binding/bind", BindingController::bind, "auth.binding.manage");
-        router.post("/api/binding/unbind", BindingController::unbind, "auth.binding.manage");
+        router.post("/api/binding/bind", BindingController::bind);
+        router.post("/api/binding/unbind", BindingController::unbind);
+
+        // Player data (authenticated)
+        router.get("/api/player/me", PlayerController::getMyPlayerData);
 
         // Start Netty
         bossGroup = new NioEventLoopGroup(1);
@@ -128,13 +137,12 @@ public class WebServer {
         });
         broadcastScheduler.scheduleWithFixedDelay(() -> {
             try {
-                WebSocketController.broadcastStatus(
-                        minecraftServer, startTime);
+                WebSocketController.broadcastStatus();
             } catch (Exception e) {
                 UtopiaServerPanel.LOGGER.warn("Status broadcast error", e);
             }
         }, intervalMs, intervalMs, TimeUnit.MILLISECONDS);
-        UtopiaServerPanel.LOGGER.info("Status broadcast started with interval {} ms", intervalMs);
+//        UtopiaServerPanel.LOGGER.info("Status broadcast started with interval {} ms", intervalMs);
     }
 
     /** Gracefully shut down the web server. */
@@ -144,6 +152,10 @@ public class WebServer {
             broadcastScheduler.shutdownNow();
             broadcastScheduler = null;
         }
+
+        // Shut down caches
+        ServerStatusCache.getInstance().stop();
+        PlayerDataCache.getInstance().shutdown();
 
         if (serverChannel != null) {
             serverChannel.close();
@@ -161,6 +173,7 @@ public class WebServer {
         // Clean up singletons for potential re-registration on server restart
         Router.getInstance().clear();
         MiddlewarePipeline.getInstance().clear();
+        AdapterRegistry.shutdown();
         MyBatisFactory.shutdown();
 
         UtopiaServerPanel.LOGGER.info("UtopiaServerPanel web server stopped");

@@ -9,6 +9,7 @@ import java.util.*;
 
 /**
  * Role management service using MyBatis mappers.
+ * Updated for level-based permission system.
  */
 public final class RoleService {
 
@@ -21,7 +22,8 @@ public final class RoleService {
             var permMapper = session.getMapper(PermissionMapper.class);
             for (Map<String, Object> r : roles) {
                 int roleId = toInt(r.get("id"));
-                r.put("permissionCount", permMapper.getKeysByRoleId(roleId).size());
+                Map<String, Integer> levels = PermissionService.getRoleLevels(roleId);
+                r.put("permissionLevels", levels);
             }
             return roles;
         });
@@ -33,13 +35,12 @@ public final class RoleService {
             Map<String, Object> role = mapper.findById(roleId);
             if (role == null) return null;
             role.put("userCount", mapper.countUsersByRoleId(roleId));
-            role.put("permissions", PermissionService.getRolePermissionsGrouped(roleId));
-            role.put("permissionKeys", new ArrayList<>(PermissionService.getRolePermissions(roleId)));
+            role.put("permissionLevels", PermissionService.getRoleLevels(roleId));
             return role;
         });
     }
 
-    public static int createRole(String name, String description, Set<String> permissionKeys) {
+    public static int createRole(String name, String description, Map<String, Integer> permissionLevels) {
         if (name == null || name.isBlank()) return -1;
         final String finalName = name.trim();
 
@@ -56,33 +57,47 @@ public final class RoleService {
             mapper.insert(role);
 
             int roleId = toInt(role.get("id"));
-            if (permissionKeys != null && !permissionKeys.isEmpty()) {
-                PermissionService.setRolePermissions(roleId, permissionKeys);
+            if (permissionLevels != null && !permissionLevels.isEmpty()) {
+                PermissionService.setRoleLevels(roleId, permissionLevels);
+            } else {
+                // Default: all permissions to deny
+                Map<String, Integer> defaults = new LinkedHashMap<>();
+                for (String key : PermissionLevel.PERMISSION_KEYS) {
+                    defaults.put(key, 0);
+                }
+                PermissionService.setRoleLevels(roleId, defaults);
             }
             UtopiaServerPanel.LOGGER.info("Role created: {} (id={})", finalName, roleId);
             return roleId;
         });
     }
 
-    public static UpdateRoleResult updateRole(int roleId, String name, String description, Set<String> permissionKeys) {
+    public static UpdateRoleResult updateRole(int roleId, String name, String description, Map<String, Integer> permissionLevels) {
         return MyBatisFactory.doWorkWithResult(session -> {
             var mapper = session.getMapper(RoleMapper.class);
             Map<String, Object> existing = mapper.findById(roleId);
             if (existing == null) return UpdateRoleResult.NOT_FOUND;
 
             boolean isImmutable = toInt(existing.get("isImmutable")) == 1;
+            boolean isSystem = toInt(existing.get("isSystem")) == 1;
 
             long now = System.currentTimeMillis() / 1000;
             Map<String, Object> params = new HashMap<>();
             params.put("id", roleId);
-            params.put("name", name != null && !name.isBlank() ? name.trim() : null);
+            // System roles (admin, guest) cannot have their name changed
+            if (isSystem) {
+                params.put("name", null); // keep existing name
+            } else {
+                params.put("name", name != null && !name.isBlank() ? name.trim() : null);
+            }
             params.put("description", description);
             params.put("updatedAt", now);
             mapper.update(params);
 
-            if (permissionKeys != null) {
+            if (permissionLevels != null) {
+                // Admin role (immutable) cannot have permissions changed
                 if (isImmutable) return UpdateRoleResult.IMMUTABLE;
-                PermissionService.setRolePermissions(roleId, permissionKeys);
+                PermissionService.setRoleLevels(roleId, permissionLevels);
             }
             return UpdateRoleResult.SUCCESS;
         });

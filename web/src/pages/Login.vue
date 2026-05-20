@@ -17,7 +17,7 @@
       {{ $t('auth.noAccount') }} <router-link to="/register">{{ $t('auth.registerLink') }}</router-link>
     </p>
     <p class="home-link">
-      <router-link to="/dashboard">{{ $t('auth.backHome') }}</router-link>
+      <a href="#" @click.prevent="$router.back()">{{ $t('auth.goBack') }}</a>
     </p>
   </div>
 </template>
@@ -40,9 +40,15 @@ const handleLogin = async () => {
   error.value = '';
   loading.value = true;
   try {
-    await auth.login(username.value, password.value);
-    // Router guard will handle redirect based on mustChangePassword / bindingStatus
-    router.push(route.query.redirect || '/dashboard');
+    const result = await auth.login(username.value, password.value);
+    // Redirect based on state
+    if (result.mustChangePassword) {
+      router.push('/user/first-modify-password');
+    } else if (result.bindingStatus !== 'bound' && !auth.isAdmin) {
+      router.push('/user/bind');
+    } else {
+      router.push(route.query.redirect || '/dashboard');
+    }
   } catch (e) {
     error.value = e.response?.data?.message || 'Login failed';
   } finally {
