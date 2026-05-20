@@ -148,7 +148,8 @@ const messages = {
       newPassword: 'New Password',
       confirmPassword: 'Confirm Password',
       changePasswordBtn: 'Change Password',
-      logout :'Logout'
+      logout :'Logout',
+      confirmNewPassword: 'Confirm Password'
     },
     user: {
       home: {
@@ -371,7 +372,8 @@ const messages = {
       newPassword: '新密码',
       confirmPassword: '确认密码',
       changePasswordBtn: '修改密码',
-      logout: '退出登录'
+      logout: '退出登录',
+      confirmNewPassword: '确认密码'
     },
     user: {
       home: {
