@@ -81,22 +81,27 @@ public final class RoleService {
             boolean isImmutable = toInt(existing.get("isImmutable")) == 1;
             boolean isSystem = toInt(existing.get("isSystem")) == 1;
 
+            // Admin role (immutable) cannot have permissions changed
+            if (isImmutable && permissionLevels != null) {
+                return UpdateRoleResult.IMMUTABLE;
+            }
+
             long now = System.currentTimeMillis() / 1000;
             Map<String, Object> params = new HashMap<>();
             params.put("id", roleId);
+            
             // System roles (admin, guest) cannot have their name changed
             if (isSystem) {
-                params.put("name", null); // keep existing name
+                params.put("name", existing.get("name")); // Keep existing name
             } else {
-                params.put("name", name != null && !name.isBlank() ? name.trim() : null);
+                params.put("name", name != null && !name.isBlank() ? name.trim() : existing.get("name"));
             }
+            
             params.put("description", description);
             params.put("updatedAt", now);
             mapper.update(params);
 
             if (permissionLevels != null) {
-                // Admin role (immutable) cannot have permissions changed
-                if (isImmutable) return UpdateRoleResult.IMMUTABLE;
                 PermissionService.setRoleLevels(roleId, permissionLevels);
             }
             return UpdateRoleResult.SUCCESS;
