@@ -122,9 +122,11 @@ const messages = {
       goBack: 'Go back',
       loginFailed: 'Invalid username or password',
       registerSuccess: 'Registration successful! You can now sign in.',
-      passwordMismatch: 'Passwords do not match'
+      passwordMismatch: 'Passwords do not match',
+      logout: 'Logout'
     },
     admin: {
+      title: 'Admin Panel',
       backToPanel: 'Back to Panel',
       users: 'Users',
       roles: 'Roles',
@@ -145,6 +147,7 @@ const messages = {
     user: {
       home: {
         title: 'My Dashboard',
+        personalPage: 'Personal Page',
         accountInfo: 'Account Information',
         username: 'Username',
         role: 'Role',
@@ -336,9 +339,11 @@ const messages = {
       goBack: '返回',
       loginFailed: '用户名或密码错误',
       registerSuccess: '注册成功！您现在可以登录了。',
-      passwordMismatch: '两次输入的密码不一致'
+      passwordMismatch: '两次输入的密码不一致',
+      logout: '退出登录'
     },
     admin: {
+      title: '后台管理',
       backToPanel: '返回面板',
       users: '用户管理',
       roles: '角色管理',
@@ -359,6 +364,7 @@ const messages = {
     user: {
       home: {
         title: '我的面板',
+        personalPage: '个人主页',
         accountInfo: '账户信息',
         username: '用户名',
         role: '角色',

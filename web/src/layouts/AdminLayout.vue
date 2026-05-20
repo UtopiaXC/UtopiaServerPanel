@@ -3,15 +3,20 @@
     <aside class="sidebar">
       <div class="sidebar-header">
         <router-link to="/dashboard" class="back-link">&larr; {{ $t('admin.backToPanel') }}</router-link>
-        <LanguageSwitcher style="margin-top: 16px;" />
       </div>
       <nav class="sidebar-nav">
         <router-link v-if="auth.hasReadAccess('admin')" to="/admin/roles" class="nav-item" active-class="active">
           <span class="nav-icon"></span> {{ $t('admin.roles') }}
         </router-link>
+        <router-link v-if="auth.hasReadAccess('admin')" to="/admin/users" class="nav-item" active-class="active">
+          <span class="nav-icon"></span> {{ $t('user.profile.userManagement') }}
+        </router-link>
       </nav>
     </aside>
     <main class="admin-content">
+      <div class="content-header">
+        <LanguageSwitcher />
+      </div>
       <router-view />
     </main>
   </div>
@@ -35,4 +40,5 @@ const auth = useAuthStore();
 .nav-item.active { background: var(--primary-color); color: #fff; }
 .nav-icon { font-size: 1.1rem; }
 .admin-content { flex: 1; min-width: 0; }
+.content-header { display: flex; justify-content: flex-end; margin-bottom: 20px; }
 </style>

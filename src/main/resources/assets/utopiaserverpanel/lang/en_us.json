@@ -9,5 +9,10 @@
   "utopiaserverpanel.configuration.items": "Item List",
   "utopiaserverpanel.configuration.logDirtBlock": "Log Dirt Block",
   "utopiaserverpanel.configuration.magicNumberIntroduction": "Magic Number Text",
-  "utopiaserverpanel.configuration.magicNumber": "Magic Number"
+  "utopiaserverpanel.configuration.magicNumber": "Magic Number",
+  
+  "commands.usp.bind.your_code": "Your binding code: ",
+  "commands.usp.bind.click_to_copy": "Click to copy",
+  "commands.usp.bind.instruction": "Use this code in the web panel to bind your player account.",
+  "commands.usp.bind.expires": "This code expires in 5 minutes."
 }

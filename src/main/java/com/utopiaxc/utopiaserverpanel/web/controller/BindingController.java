@@ -67,6 +67,9 @@ public final class BindingController {
             try {
                 body = GSON.fromJson(ctx.body(), JsonObject.class);
             } catch (Exception e) {
+                body = null;
+            }
+            if (body == null) {
                 body = new JsonObject();
             }
 

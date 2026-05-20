@@ -2,6 +2,7 @@
 const WS_BASE = import.meta.env.DEV ? 'ws://localhost:55533/ws' : `ws://${window.location.host}/ws`;
 
 let socket = null;
+const messageQueue = [];
 const listeners = {
   status: [],
   status_delta: [],
@@ -21,6 +22,9 @@ function connectWebSocket() {
   socket.onopen = () => {
     console.log('WebSocket connected');
     fetchStatus();
+    while (messageQueue.length > 0) {
+      socket.send(messageQueue.shift());
+    }
   };
 
   socket.onmessage = (event) => {
@@ -65,9 +69,14 @@ export function off(type, callback) {
 connectWebSocket();
 
 function send(action, payload = {}) {
+  const token = localStorage.getItem('accessToken');
+  const msg = JSON.stringify({ action, token, ...payload });
+  
   if (socket && socket.readyState === WebSocket.OPEN) {
-    const token = localStorage.getItem('token');
-    socket.send(JSON.stringify({ action, token, ...payload }));
+    socket.send(msg);
+  } else {
+    // Queue message if socket is not ready yet
+    messageQueue.push(msg);
   }
 }
 

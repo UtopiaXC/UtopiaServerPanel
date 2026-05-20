@@ -15,10 +15,17 @@
           <router-link v-if="!auth.isLoggedIn" to="/login" class="auth-btn" title="Sign in">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M10 3.5a.5.5 0 0 0-.5-.5h-8a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 1 1 0v2A1.5 1.5 0 0 1 9.5 14h-8A1.5 1.5 0 0 1 0 12.5v-9A1.5 1.5 0 0 1 1.5 2h8A1.5 1.5 0 0 1 11 3.5v2a.5.5 0 0 1-1 0v-2z"/><path fill-rule="evenodd" d="M4.146 8.354a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L5.707 7.5H14.5a.5.5 0 0 1 0 1H5.707l2.147 2.146a.5.5 0 0 1-.708.708l-3-3z"/></svg>
           </router-link>
-          <router-link v-else to="/user/home" class="auth-btn logged-in" title="Account">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16"><path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10z"/></svg>
-            <span class="auth-label">{{ auth.user?.username }}</span>
-          </router-link>
+          <div v-else class="custom-dropdown" @click="userDropdownOpen = !userDropdownOpen" v-click-outside="() => userDropdownOpen = false">
+            <div class="auth-btn logged-in" style="cursor:pointer" title="Account">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16"><path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10z"/></svg>
+              <span class="auth-label">{{ auth.user?.username }}</span>
+            </div>
+            <ul class="custom-dropdown-menu" v-if="userDropdownOpen">
+              <li @click="router.push('/user/home')">{{ $t('user.home.personalPage') || 'Personal Page' }}</li>
+              <li v-if="auth.hasFullAccess('admin')" @click="router.push('/admin/roles')">{{ $t('admin.title') || 'Admin' }}</li>
+              <li @click="handleLogout" style="color: #ef4444">{{ $t('auth.logout') || 'Logout' }}</li>
+            </ul>
+          </div>
         </div>
       </div>
       <nav class="tabs">
@@ -47,6 +54,24 @@ const router = useRouter();
 const auth = useAuthStore();
 
 const theme = ref(localStorage.getItem('theme') || 'auto');
+const userDropdownOpen = ref(false);
+
+const handleLogout = async () => {
+  await auth.logout();
+  router.push('/login');
+};
+
+const vClickOutside = {
+  mounted(el, binding) {
+    el.clickOutsideEvent = (event) => {
+      if (!(el === event.target || el.contains(event.target))) binding.value(event, el);
+    };
+    document.body.addEventListener('click', el.clickOutsideEvent);
+  },
+  unmounted(el) {
+    document.body.removeEventListener('click', el.clickOutsideEvent);
+  }
+};
 
 const applyTheme = (t) => {
   if (t === 'dark' || (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
@@ -85,6 +110,10 @@ header { margin-bottom: 20px; }
 .auth-btn:hover { border-color: var(--primary-color); color: var(--primary-color); }
 .auth-btn.logged-in { background: var(--bg-color); }
 .auth-label { font-size: 0.85rem; font-weight: 500; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.custom-dropdown { position: relative; display: inline-block; user-select: none; }
+.custom-dropdown-menu { position: absolute; top: calc(100% + 4px); right: 0; background: var(--tooltip-bg, var(--card-bg, #fff)); border: 1px solid var(--border-color, #ccc); border-radius: 6px; box-shadow: 0 4px 12px var(--tooltip-shadow, rgba(0,0,0,0.15)); list-style: none; padding: 4px 0; margin: 0; z-index: 1000; min-width: 120px; }
+.custom-dropdown-menu li { padding: 8px 16px; font-size: 0.9rem; color: var(--text-strong, #333); cursor: pointer; white-space: nowrap; transition: background 0.15s; }
+.custom-dropdown-menu li:hover { background: var(--bg-color, #f0f0f0); }
 .theme-toggle { background: none; border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 8px; cursor: pointer; color: var(--text-secondary); display: flex; align-items: center; }
 .theme-toggle:hover { border-color: var(--border-hover); color: var(--text-strong); }
 </style>

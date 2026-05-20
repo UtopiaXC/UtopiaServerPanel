@@ -1,19 +1,19 @@
 <template>
   <div class="bind-page">
-    <h2>{{ $t('admin.playerBinding') }}</h2>
+    <h2>{{ $t('user.profile.playerBinding') }}</h2>
     <p class="desc">{{ $t('auth.mustBindBanner') }}</p>
     <form @submit.prevent="handleBind">
-      <div class="fg"><label>{{ $t('admin.bindingCode') }}</label>
+      <div class="fg"><label>{{ $t('auth.bindingCode') }}</label>
         <div class="row">
           <input v-model="code" type="text" placeholder="" maxlength="6" required style="text-transform:uppercase;letter-spacing:4px;text-align:center;font-size:1.2rem;font-family:monospace;width:140px" />
-          <button class="btn" :disabled="loading">{{ loading?'...':$t('admin.bind') }}</button>
+          <button class="btn" :disabled="loading">{{ loading?'...':$t('binding.bind') }}</button>
         </div>
       </div>
     </form>
     <div v-if="err" class="err">{{ err }}</div>
     <div v-if="ok" class="ok">{{ ok }}</div>
-    <p class="hint">{{ $t('admin.getCodeHint') }} <code>/usp bind</code></p>
-    <button class="btn-logout" @click="handleLogout">{{ $t('admin.logout') }}</button>
+    <p class="hint">{{ $t('binding.getCodeHint') }} <code>/usp bind</code></p>
+    <button class="btn-logout" @click="handleLogout">{{ $t('auth.logout') }}</button>
   </div>
 </template>
 

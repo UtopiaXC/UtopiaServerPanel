@@ -130,19 +130,27 @@
     <!-- Actions -->
     <div class="actions">
       <router-link to="/user/profile" class="btn-primary">{{ $t('user.home.editProfile') }}</router-link>
+      <button class="btn-logout" @click="handleLogout">{{ $t('auth.logout') }}</button>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth';
 import { authAPI } from '../../api/auth';
 
+const router = useRouter();
 const auth = useAuthStore();
 const playerData = ref(null);
 const loginHistory = ref([]);
 const loading = ref(false);
+
+const handleLogout = async () => {
+  await auth.logout();
+  router.push('/login');
+};
 
 const permKeys = ['admin', 'dashboard', 'terminal', 'logs'];
 
@@ -234,6 +242,10 @@ html.dark .status-badge.offline { background: #374151; color: #9ca3af; }
 
 .btn-primary { display: inline-block; padding: 10px 24px; background: var(--primary-color); color: #fff; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 500; text-decoration: none; cursor: pointer; transition: opacity 0.2s; }
 .btn-primary:hover { opacity: 0.9; }
+
+.btn-logout { display: inline-block; padding: 10px 24px; background: transparent; color: #dc2626; border: 1px solid #fecaca; border-radius: 8px; font-size: 0.95rem; font-weight: 500; cursor: pointer; transition: background 0.2s; }
+.btn-logout:hover { background: #fef2f2; }
+html.dark .btn-logout:hover { background: #450a0a; border-color: #fca5a5; }
 
 .history-section { margin-bottom: 24px; }
 .history-table { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; }

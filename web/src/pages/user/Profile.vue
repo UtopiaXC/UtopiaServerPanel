@@ -44,53 +44,6 @@
         </div>
       </div>
 
-      <!-- Admin Link -->
-      <div v-if="auth.hasReadAccess('admin')" class="form-group">
-        <router-link to="/admin/roles" class="btn-secondary">{{ $t('user.profile.goToAdmin') }}</router-link>
-      </div>
-    </div>
-
-    <!-- Admin: User Management (only if has admin access) -->
-    <div v-if="auth.hasReadAccess('admin')" class="section">
-      <h3>{{ $t('user.profile.userManagement') }}</h3>
-      <div class="toolbar">
-        <button v-if="auth.hasFullAccess('admin')" class="btn-primary" @click="openCreateUser">{{ $t('user.profile.createUser') }}</button>
-      </div>
-
-      <div class="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>{{ $t('common.username') }}</th>
-              <th>{{ $t('user.profile.roleName') }}</th>
-              <th>{{ $t('user.profile.status') }}</th>
-              <th>{{ $t('user.profile.binding') }}</th>
-              <th v-if="auth.hasFullAccess('admin')">{{ $t('common.actions') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="u in users" :key="u.id">
-              <td>{{ u.id }}</td>
-              <td>{{ u.username }}</td>
-              <td><span class="badge">{{ u.roleName }}</span></td>
-              <td>
-                <span :class="u.isActive ? 'status-ok' : 'status-warn'">
-                  {{ u.isActive ? $t('user.profile.active') : $t('user.profile.inactive') }}
-                </span>
-              </td>
-              <td>{{ $t('user.home.' + (u.bindingStatus || 'unbound')) }}</td>
-              <td v-if="auth.hasFullAccess('admin')">
-                <button class="btn-sm" @click="openEditUser(u)">{{ $t('common.edit') }}</button>
-                <button class="btn-sm btn-danger" @click="confirmDeleteUser(u)" :disabled="u.id === 1">{{ $t('common.delete') }}</button>
-              </td>
-            </tr>
-            <tr v-if="users.length === 0">
-              <td :colspan="auth.hasFullAccess('admin') ? 6 : 5" class="empty">{{ $t('user.profile.noUsers') }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
     </div>
 
     <!-- Confirm Unbind Modal -->
@@ -105,49 +58,7 @@
       </div>
     </div>
 
-    <!-- Edit/Create User Modal -->
-    <div v-if="showUserModal" class="modal-overlay" @click.self="showUserModal = false">
-      <div class="modal">
-        <h3>{{ editingUser ? $t('user.profile.editUser') : $t('user.profile.createUser') }}</h3>
-        <div class="modal-body">
-          <div class="form-field">
-            <label>{{ $t('common.username') }}</label>
-            <input type="text" v-model="userForm.username" :disabled="!!editingUser" />
-          </div>
-          <div class="form-field">
-            <label>{{ editingUser ? $t('user.profile.newPasswordOptional') : $t('user.profile.password') }}</label>
-            <input type="password" v-model="userForm.password" />
-          </div>
-          <div class="form-field">
-            <label>{{ $t('user.profile.roleName') }}</label>
-            <select v-model="userForm.roleId">
-              <option v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</option>
-            </select>
-          </div>
-          <div v-if="editingUser" class="form-field">
-            <label>
-              <input type="checkbox" v-model="userForm.isActive" /> {{ $t('user.profile.active') }}
-            </label>
-          </div>
-        </div>
-        <div class="modal-actions">
-          <button class="btn-secondary" @click="showUserModal = false">{{ $t('common.cancel') }}</button>
-          <button class="btn-primary" @click="saveUser">{{ $t('common.save') }}</button>
-        </div>
-      </div>
-    </div>
 
-    <!-- Confirm Delete User Modal -->
-    <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="showDeleteConfirm = false">
-      <div class="modal">
-        <h3>{{ $t('user.profile.deleteUser') }}</h3>
-        <p>{{ $t('user.profile.deleteWarning', { username: deletingUser?.username }) }}</p>
-        <div class="modal-actions">
-          <button class="btn-secondary" @click="showDeleteConfirm = false">{{ $t('common.cancel') }}</button>
-          <button class="btn-danger" @click="doDeleteUser">{{ $t('common.delete') }}</button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -174,14 +85,7 @@ const passwordMsgType = ref('success');
 // Unbind
 const showUnbindConfirm = ref(false);
 
-// User management
-const users = ref([]);
-const roles = ref([]);
-const showUserModal = ref(false);
-const editingUser = ref(null);
-const userForm = ref({ username: '', password: '', roleId: 2, isActive: true });
-const showDeleteConfirm = ref(false);
-const deletingUser = ref(null);
+
 
 const submitUsername = async () => {
   try {
@@ -226,73 +130,7 @@ const doUnbind = async () => {
   }
 };
 
-const loadUsers = async () => {
-  try {
-    const { data } = await api.get('/admin/users');
-    users.value = data.data.users || [];
-  } catch { /* ignore */ }
-};
 
-const loadRoles = async () => {
-  try {
-    const { data } = await api.get('/admin/roles');
-    roles.value = data.data.roles || [];
-  } catch { /* ignore */ }
-};
-
-const openCreateUser = () => {
-  editingUser.value = null;
-  userForm.value = { username: '', password: '', roleId: 2, isActive: true };
-  showUserModal.value = true;
-};
-
-const openEditUser = (u) => {
-  editingUser.value = u;
-  userForm.value = { username: u.username, password: '', roleId: u.roleId, isActive: u.isActive };
-  showUserModal.value = true;
-};
-
-const saveUser = async () => {
-  try {
-    if (editingUser.value) {
-      const body = { roleId: userForm.value.roleId, isActive: userForm.value.isActive };
-      if (userForm.value.password) body.newPassword = userForm.value.password;
-      await api.put(`/admin/users/${editingUser.value.id}`, body);
-    } else {
-      await api.post('/admin/users', {
-        username: userForm.value.username,
-        password: userForm.value.password,
-        roleId: userForm.value.roleId
-      });
-    }
-    showUserModal.value = false;
-    await loadUsers();
-  } catch (e) {
-    alert(e.response?.data?.message || 'Error');
-  }
-};
-
-const confirmDeleteUser = (u) => {
-  deletingUser.value = u;
-  showDeleteConfirm.value = true;
-};
-
-const doDeleteUser = async () => {
-  try {
-    await api.delete(`/admin/users/${deletingUser.value.id}`);
-    showDeleteConfirm.value = false;
-    deletingUser.value = null;
-    await loadUsers();
-  } catch (e) {
-    alert(e.response?.data?.message || 'Error');
-  }
-};
-
-onMounted(async () => {
-  if (auth.hasReadAccess('admin')) {
-    await Promise.all([loadUsers(), loadRoles()]);
-  }
-});
 </script>
 
 <style scoped>

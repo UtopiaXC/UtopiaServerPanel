@@ -14,6 +14,7 @@ const Login = () => import('../pages/Login.vue');
 const Register = () => import('../pages/Register.vue');
 const Forbidden = () => import('../pages/Forbidden.vue');
 const RolesPage = () => import('../pages/admin/Roles.vue');
+const UsersPage = () => import('../pages/admin/Users.vue');
 
 const UserHome = () => import('../pages/user/Home.vue');
 const UserProfile = () => import('../pages/user/Profile.vue');
@@ -35,6 +36,7 @@ const routes = [
     children: [
       { path: '', redirect: '/admin/roles' },
       { path: 'roles', name: 'AdminRoles', component: RolesPage, meta: { permKey: 'admin', minLevel: 1 } },
+      { path: 'users', name: 'AdminUsers', component: UsersPage, meta: { permKey: 'admin', minLevel: 1 } },
     ]
   },
   { path: '/user', component: UserLayout, meta: { requiresAuth: true },

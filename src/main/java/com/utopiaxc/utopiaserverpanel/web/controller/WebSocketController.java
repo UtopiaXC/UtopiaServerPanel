@@ -59,8 +59,7 @@ public final class WebSocketController {
             String token = req.has("token") && !req.get("token").isJsonNull() ? req.get("token").getAsString() : null;
 
             int userId = -1;
-            if (token != null) {
-                com.utopiaxc.utopiaserverpanel.auth.JwtUtil.initialize(""); // Ensure initialized
+            if (token != null && com.utopiaxc.utopiaserverpanel.auth.JwtUtil.isInitialized()) {
                 io.jsonwebtoken.Claims claims = com.utopiaxc.utopiaserverpanel.auth.JwtUtil.validateToken(token);
                 if (claims != null) {
                     userId = com.utopiaxc.utopiaserverpanel.auth.JwtUtil.getUserId(claims);
