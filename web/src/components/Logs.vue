@@ -14,6 +14,7 @@
       <MonitorCard :title="$t('logs.tpsChart')" type="tps" />
       <MonitorCard :title="$t('logs.diskUsage')" type="disk" />
       <MonitorCard :title="$t('logs.playerOnline')" type="player" />
+      <ServerLifecycleCard />
     </div>
   </div>
 </template>
@@ -22,6 +23,7 @@
 import { ref, onMounted } from 'vue';
 import { monitorAPI } from '../api/admin';
 import MonitorCard from './MonitorCard.vue';
+import ServerLifecycleCard from './ServerLifecycleCard.vue';
 
 const monitorDisabled = ref(false);
 

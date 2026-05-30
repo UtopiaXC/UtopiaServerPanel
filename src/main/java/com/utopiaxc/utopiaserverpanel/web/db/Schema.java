@@ -18,7 +18,7 @@ import java.util.Map;
  * Uses raw JDBC for DDL (CREATE TABLE), MyBatis mappers for seed data.
  */
 public final class Schema {
-    private static final int CURRENT_SCHEMA_VERSION = 3;
+    private static final int CURRENT_SCHEMA_VERSION = 4;
 
     private Schema() {}
 
@@ -55,6 +55,10 @@ public final class Schema {
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_perf_logs_ts ON perf_logs(ts)");
             stmt.execute("CREATE TABLE IF NOT EXISTS player_events (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, player_name TEXT NOT NULL, player_uuid TEXT NOT NULL, event_type INTEGER NOT NULL)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_player_events_ts ON player_events(ts)");
+
+            // Server lifecycle events
+            stmt.execute("CREATE TABLE IF NOT EXISTS server_lifecycle (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, event_type INTEGER NOT NULL, detail TEXT DEFAULT '')");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_server_lifecycle_ts ON server_lifecycle(ts)");
         }
     }
 

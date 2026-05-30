@@ -32,5 +32,7 @@ export const bindingAPI = {
 export const monitorAPI = {
   queryPerfLogs(start, end) { return api.get('/monitor/perf', { params: { start, end } }); },
   queryPlayerEvents(start, end) { return api.get('/monitor/players', { params: { start, end } }); },
-  getDisplayConfig() { return api.get('/monitor/config'); }
+  getDisplayConfig() { return api.get('/monitor/config'); },
+  queryLifecyclePaged(page, size) { return api.get('/monitor/lifecycle', { params: { page, size } }); },
+  queryLifecycleRange(start, end) { return api.get('/monitor/lifecycle/range', { params: { start, end } }); }
 };

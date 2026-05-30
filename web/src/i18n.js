@@ -127,7 +127,19 @@ const messages = {
       diskUsed: 'Disk Used',
       diskTotal: 'Disk Total',
       onlineCount: 'Online Count',
-      monitorDisabled: 'Monitoring is currently disabled.'
+      monitorDisabled: 'Monitoring is currently disabled.',
+      serverLifecycle: 'Server Lifecycle',
+      serverStart: 'Started',
+      serverNormalStop: 'Normal Stop',
+      serverAbnormalStop: 'Abnormal Stop',
+      serverCrash: 'Crash',
+      serverOffline: 'Server Offline',
+      eventTime: 'Time',
+      eventType: 'Event Type',
+      eventDetail: 'Detail',
+      prevPage: 'Prev',
+      nextPage: 'Next',
+      noLifecycleData: 'No lifecycle events recorded.'
     },
     auth: {
       loginTitle: 'Sign In',
@@ -390,7 +402,19 @@ const messages = {
       diskUsed: '磁盘已用',
       diskTotal: '磁盘总量',
       onlineCount: '在线人数',
-      monitorDisabled: '监控日志当前已关闭。'
+      monitorDisabled: '监控日志当前已关闭。',
+      serverLifecycle: '服务器启停记录',
+      serverStart: '启动',
+      serverNormalStop: '正常关闭',
+      serverAbnormalStop: '异常关闭',
+      serverCrash: '崩溃',
+      serverOffline: '服务器离线',
+      eventTime: '时间',
+      eventType: '事件类型',
+      eventDetail: '详情',
+      prevPage: '上一页',
+      nextPage: '下一页',
+      noLifecycleData: '暂无服务器启停记录。'
     },
     auth: {
       loginTitle: '登录',

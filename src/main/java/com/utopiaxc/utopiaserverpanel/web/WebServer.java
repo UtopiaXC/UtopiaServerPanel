@@ -9,6 +9,7 @@ import com.utopiaxc.utopiaserverpanel.web.cache.ServerStatusCache;
 import com.utopiaxc.utopiaserverpanel.web.controller.*;
 import com.utopiaxc.utopiaserverpanel.web.service.MonitorConfigService;
 import com.utopiaxc.utopiaserverpanel.web.service.PlayerEventTracker;
+import com.utopiaxc.utopiaserverpanel.web.service.ServerLifecycleService;
 import com.utopiaxc.utopiaserverpanel.web.db.MyBatisFactory;
 import com.utopiaxc.utopiaserverpanel.web.db.Schema;
 import com.utopiaxc.utopiaserverpanel.web.middleware.AuthMiddleware;
@@ -60,6 +61,9 @@ public class WebServer {
 
         // -- Load monitor configuration --
         MonitorConfigService.loadAll();
+
+        // -- Record server start lifecycle event --
+        ServerLifecycleService.recordStart();
 
         // -- Register middlewares --
         MiddlewarePipeline.getInstance()
@@ -118,6 +122,8 @@ public class WebServer {
         router.get("/api/monitor/perf", MonitorController::queryPerfLogs, "logs:1");
         router.get("/api/monitor/players", MonitorController::queryPlayerEvents, "logs:1");
         router.get("/api/monitor/config", MonitorController::getDisplayConfig);
+        router.get("/api/monitor/lifecycle", MonitorController::queryLifecyclePaged, "logs:1");
+        router.get("/api/monitor/lifecycle/range", MonitorController::queryLifecycleRange, "logs:1");
 
         // Start Netty
         bossGroup = new NioEventLoopGroup(1);
@@ -163,6 +169,9 @@ public class WebServer {
 
     /** Gracefully shut down the web server. */
     public static void stop() {
+        // Record normal shutdown lifecycle event (must be before DB shutdown)
+        ServerLifecycleService.recordNormalStop();
+
         // Shut down broadcast scheduler first
         if (broadcastScheduler != null) {
             broadcastScheduler.shutdownNow();
