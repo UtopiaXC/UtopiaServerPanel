@@ -15,10 +15,22 @@ export const adminAPI = {
   deleteRole(id) { return api.delete(`/admin/roles/${id}`); },
 
   // Permissions
-  listPermissions() { return api.get('/admin/permissions'); }
+  listPermissions() { return api.get('/admin/permissions'); },
+
+  // Settings
+  getSiteName() { return api.get('/settings/site'); },
+  setSiteName(name) { return api.put('/settings/site', { name }); },
+  getMonitorConfig() { return api.get('/settings/monitor'); },
+  setMonitorConfig(data) { return api.put('/settings/monitor', data); }
 };
 
 export const bindingAPI = {
   bind(code) { return api.post('/binding/bind', { code }); },
   unbind(userId) { return api.post('/binding/unbind', userId ? { userId } : {}); }
+};
+
+export const monitorAPI = {
+  queryPerfLogs(start, end) { return api.get('/monitor/perf', { params: { start, end } }); },
+  queryPlayerEvents(start, end) { return api.get('/monitor/players', { params: { start, end } }); },
+  getDisplayConfig() { return api.get('/monitor/config'); }
 };

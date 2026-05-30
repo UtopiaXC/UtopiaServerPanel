@@ -2,7 +2,7 @@
   <div class="main-layout">
     <header>
       <div class="header-top">
-        <h1>{{ $t('app.title') }}</h1>
+        <h1>{{ site.siteName || $t('app.title') }}</h1>
         <div class="header-controls">
           <button class="theme-toggle" @click="cycleTheme" :title="$t('app.theme')">
             <svg v-if="theme === 'auto'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 0 8 1v14zm0 1A8 8 0 1 1 8 0a8 8 0 0 1 0 16z"/></svg>
@@ -22,7 +22,7 @@
             </div>
             <ul class="custom-dropdown-menu" v-if="userDropdownOpen">
               <li @click="router.push('/user/home')">{{ $t('user.home.personalPage') || 'Personal Page' }}</li>
-              <li v-if="auth.hasFullAccess('admin')" @click="router.push('/admin/roles')">{{ $t('admin.title') || 'Admin' }}</li>
+              <li v-if="auth.hasFullAccess('admin')" @click="router.push('/admin')">{{ $t('admin.title') || 'Admin' }}</li>
               <li @click="handleLogout" style="color: #ef4444">{{ $t('auth.logout') || 'Logout' }}</li>
             </ul>
           </div>
@@ -48,10 +48,12 @@
 import { ref, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
+import { useSiteStore } from '../stores/site';
 import LanguageSwitcher from '../components/LanguageSwitcher.vue';
 
 const router = useRouter();
 const auth = useAuthStore();
+const site = useSiteStore();
 
 const theme = ref(localStorage.getItem('theme') || 'auto');
 const userDropdownOpen = ref(false);

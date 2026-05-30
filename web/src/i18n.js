@@ -45,7 +45,7 @@ const messages = {
       cpuUsage: 'CPU Usage',
       coreUsage: 'Core Usage',
       corePrefix: 'Core',
-      uptime: 'Uptime',
+      uptime: 'Total Uptime',
       worldName: 'World Name',
       diskUsage: 'Disk Usage',
       diskTotal: 'Disk Total',
@@ -54,9 +54,16 @@ const messages = {
       version: 'Server Version',
       tps: 'TPS',
       motd: 'MOTD',
+      systemUsedMemory: 'System Used Memory',
       properties: 'Server Properties',
       dataUpdated: 'Data updated at',
       loading: 'Loading...',
+      uptimeFormat: {
+        days: '{d} days {h} hours {m} minutes',
+        hours: '{h} hours {m} minutes',
+        minutes: '{m} minutes',
+        seconds: '{s} seconds'
+      },
       propGroups: {
         world: 'World',
         gameplay: 'Gameplay',
@@ -100,7 +107,27 @@ const messages = {
     logs: {
       title: 'Monitoring Logs',
       placeholder: 'Coming soon...',
-      comingSoon: 'CPU & Memory charts will be added here.'
+      comingSoon: 'CPU & Memory charts will be added here.',
+      cpuUsage: 'CPU Usage',
+      memoryUsage: 'Memory Usage',
+      tpsChart: 'TPS',
+      diskUsage: 'Disk Usage',
+      playerOnline: 'Online Players',
+      loadMore: 'Load Earlier Data',
+      noData: 'No monitoring data available.',
+      timeRange: 'Time Range',
+      last1Day: 'Last 1 Day',
+      last1Week: 'Last 1 Week',
+      custom: 'Custom',
+      players: 'Players',
+      jvmUsed: 'JVM Used',
+      sysUsed: 'Sys Used',
+      sysTotal: 'Sys Total',
+      gameFolderSize: 'Game Folder',
+      diskUsed: 'Disk Used',
+      diskTotal: 'Disk Total',
+      onlineCount: 'Online Count',
+      monitorDisabled: 'Monitoring is currently disabled.'
     },
     auth: {
       loginTitle: 'Sign In',
@@ -149,7 +176,19 @@ const messages = {
       confirmPassword: 'Confirm Password',
       changePasswordBtn: 'Change Password',
       logout :'Logout',
-      confirmNewPassword: 'Confirm Password'
+      confirmNewPassword: 'Confirm Password',
+      systemSettings: 'System Settings',
+      monitorSettings: 'Monitor Logs',
+      siteName: 'Site Name',
+      monitorEnabled: 'Enable Monitoring',
+      monitorInterval: 'Recording Interval',
+      monitorRetention: 'Data Retention',
+      monitorShowPlayerNames: 'Show Player Names',
+      minutes: 'min',
+      days: 'days',
+      custom: 'Custom',
+      siteNamePlaceholder: 'Enter site name',
+      moreSettingsComingSoon: 'More settings coming soon.'
     },
     user: {
       home: {
@@ -269,7 +308,7 @@ const messages = {
       cpuUsage: 'CPU占用',
       coreUsage: '核心占用',
       corePrefix: '核心',
-      uptime: '运行时间',
+      uptime: '总运行时间',
       worldName: '世界名称',
       diskUsage: '磁盘占用',
       diskTotal: '磁盘总容量',
@@ -278,9 +317,16 @@ const messages = {
       version: '服务端版本',
       tps: 'TPS',
       motd: '服务器标语 (MOTD)',
+      systemUsedMemory: '系统已用内存',
       properties: '服务器配置',
       dataUpdated: '数据更新于',
       loading: '加载中...',
+      uptimeFormat: {
+        days: '{d} 天 {h} 小时 {m} 分钟',
+        hours: '{h} 小时 {m} 分钟',
+        minutes: '{m} 分钟',
+        seconds: '{s} 秒'
+      },
       propGroups: {
         world: '世界',
         gameplay: '游戏玩法',
@@ -324,7 +370,27 @@ const messages = {
     logs: {
       title: '监控日志',
       placeholder: '暂未开放...',
-      comingSoon: 'CPU 与内存图表将在此处展示。'
+      comingSoon: 'CPU 与内存图表将在此处展示。',
+      cpuUsage: 'CPU 使用率',
+      memoryUsage: '内存占用',
+      tpsChart: 'TPS',
+      diskUsage: '磁盘占用',
+      playerOnline: '玩家在线',
+      loadMore: '加载更早数据',
+      noData: '暂无监控数据。',
+      timeRange: '时间范围',
+      last1Day: '最近一天',
+      last1Week: '最近一周',
+      custom: '自定义',
+      players: '玩家',
+      jvmUsed: 'JVM 已用',
+      sysUsed: '系统已用',
+      sysTotal: '系统总量',
+      gameFolderSize: '游戏目录',
+      diskUsed: '磁盘已用',
+      diskTotal: '磁盘总量',
+      onlineCount: '在线人数',
+      monitorDisabled: '监控日志当前已关闭。'
     },
     auth: {
       loginTitle: '登录',
@@ -373,7 +439,19 @@ const messages = {
       confirmPassword: '确认密码',
       changePasswordBtn: '修改密码',
       logout: '退出登录',
-      confirmNewPassword: '确认密码'
+      confirmNewPassword: '确认密码',
+      systemSettings: '系统设置',
+      monitorSettings: '监控日志设置',
+      siteName: '网站名称',
+      monitorEnabled: '启用监控日志',
+      monitorInterval: '记录步长',
+      monitorRetention: '日志保存时长',
+      monitorShowPlayerNames: '前端显示玩家名',
+      minutes: '分钟',
+      days: '天',
+      custom: '自定义',
+      siteNamePlaceholder: '输入网站名称',
+      moreSettingsComingSoon: '更多设置即将推出。'
     },
     user: {
       home: {

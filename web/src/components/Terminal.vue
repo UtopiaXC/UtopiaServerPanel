@@ -26,7 +26,7 @@
         class="log-line"
         :class="{ 'log-web': log.source === 'web' }"
       >
-        <span class="log-time">{{ log.time }}</span>
+        <span class="log-time">{{ formatLocalTime(log) }}</span>
         <span class="log-level" :class="'level-' + (log.level || 'INFO').toLowerCase()">[{{ log.level }}]</span>
         <span class="log-logger-container">
           <span class="log-logger">[{{ log.logger }}]</span>
@@ -248,6 +248,19 @@ function escHtml(str) {
     .replace(/</g, '<')
     .replace(/>/g, '>');
 }
+
+// ── Time Formatting ──
+
+const formatLocalTime = (log) => {
+  if (log.timestamp) {
+    const d = new Date(log.timestamp);
+    const h = String(d.getHours()).padStart(2, '0');
+    const m = String(d.getMinutes()).padStart(2, '0');
+    const s = String(d.getSeconds()).padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  }
+  return log.time;
+};
 
 // ── Scrolling ──
 

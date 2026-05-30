@@ -61,6 +61,9 @@ public class RequestContext {
     /** Get a path parameter by name. */
     public String pathParam(String key) { return pathParams.get(key); }
 
+    /** Get a query parameter by name. */
+    public String queryParam(String key) { return queryParams.get(key); }
+
     public boolean isResponded() { return responded; }
     public void markResponded() { responded = true; }
 }

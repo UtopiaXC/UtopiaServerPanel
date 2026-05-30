@@ -248,6 +248,7 @@ public class NeoForgeAdapter implements GameAdapter {
 
         GlobalMemory memory = HARDWARE.getMemory();
         resources.addProperty("systemTotalMemory", memory.getTotal());
+        resources.addProperty("systemUsedMemory", memory.getTotal() - memory.getAvailable());
 
         CentralProcessor processor = HARDWARE.getProcessor();
         if (prevSystemTicks == null) {
@@ -340,6 +341,9 @@ public class NeoForgeAdapter implements GameAdapter {
 
     @Override
     public long getUptimeMillis() {
+        if (server != null && server.overworld() != null) {
+            return server.overworld().getGameTime() * 50L;
+        }
         return System.currentTimeMillis() - startTime;
     }
 

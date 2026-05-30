@@ -7,6 +7,8 @@ import com.utopiaxc.utopiaserverpanel.adapter.NeoForgeAdapter;
 import com.utopiaxc.utopiaserverpanel.web.cache.PlayerDataCache;
 import com.utopiaxc.utopiaserverpanel.web.cache.ServerStatusCache;
 import com.utopiaxc.utopiaserverpanel.web.controller.*;
+import com.utopiaxc.utopiaserverpanel.web.service.MonitorConfigService;
+import com.utopiaxc.utopiaserverpanel.web.service.PlayerEventTracker;
 import com.utopiaxc.utopiaserverpanel.web.db.MyBatisFactory;
 import com.utopiaxc.utopiaserverpanel.web.db.Schema;
 import com.utopiaxc.utopiaserverpanel.web.middleware.AuthMiddleware;
@@ -56,6 +58,9 @@ public class WebServer {
         // -- Initialize caches --
         ServerStatusCache.getInstance().start();
 
+        // -- Load monitor configuration --
+        MonitorConfigService.loadAll();
+
         // -- Register middlewares --
         MiddlewarePipeline.getInstance()
                 .use(new CorsMiddleware())
@@ -102,6 +107,17 @@ public class WebServer {
 
         // Player data (authenticated)
         router.get("/api/player/me", PlayerController::getMyPlayerData);
+
+        // Settings
+        router.get("/api/settings/site", SettingsController::getSiteName);
+        router.put("/api/settings/site", SettingsController::setSiteName, "admin:2");
+        router.get("/api/settings/monitor", SettingsController::getMonitorConfig, "admin:1");
+        router.put("/api/settings/monitor", SettingsController::setMonitorConfig, "admin:2");
+
+        // Monitor logs
+        router.get("/api/monitor/perf", MonitorController::queryPerfLogs, "logs:1");
+        router.get("/api/monitor/players", MonitorController::queryPlayerEvents, "logs:1");
+        router.get("/api/monitor/config", MonitorController::getDisplayConfig);
 
         // Start Netty
         bossGroup = new NioEventLoopGroup(1);
@@ -156,6 +172,7 @@ public class WebServer {
         // Shut down caches
         ServerStatusCache.getInstance().stop();
         PlayerDataCache.getInstance().shutdown();
+        PlayerEventTracker.getInstance().shutdown();
 
         if (serverChannel != null) {
             serverChannel.close();

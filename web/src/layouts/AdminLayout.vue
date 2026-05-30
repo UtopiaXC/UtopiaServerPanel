@@ -5,6 +5,12 @@
         <router-link to="/dashboard" class="back-link">&larr; {{ $t('admin.backToPanel') }}</router-link>
       </div>
       <nav class="sidebar-nav">
+        <router-link v-if="auth.hasReadAccess('admin')" to="/admin/system" class="nav-item" active-class="active">
+          <span class="nav-icon"></span> {{ $t('admin.systemSettings') }}
+        </router-link>
+        <router-link v-if="auth.hasReadAccess('admin')" to="/admin/logs-config" class="nav-item" active-class="active">
+          <span class="nav-icon"></span> {{ $t('admin.monitorSettings') }}
+        </router-link>
         <router-link v-if="auth.hasReadAccess('admin')" to="/admin/roles" class="nav-item" active-class="active">
           <span class="nav-icon"></span> {{ $t('admin.roles') }}
         </router-link>

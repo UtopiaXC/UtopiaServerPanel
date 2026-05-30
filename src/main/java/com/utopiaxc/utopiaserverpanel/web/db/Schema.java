@@ -18,7 +18,7 @@ import java.util.Map;
  * Uses raw JDBC for DDL (CREATE TABLE), MyBatis mappers for seed data.
  */
 public final class Schema {
-    private static final int CURRENT_SCHEMA_VERSION = 2;
+    private static final int CURRENT_SCHEMA_VERSION = 3;
 
     private Schema() {}
 
@@ -49,6 +49,12 @@ public final class Schema {
             stmt.execute("CREATE TABLE IF NOT EXISTS refresh_tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, token_hash TEXT UNIQUE NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)");
             stmt.execute("CREATE TABLE IF NOT EXISTS server_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
             stmt.execute("CREATE TABLE IF NOT EXISTS login_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, login_time INTEGER NOT NULL DEFAULT (strftime('%s','now')), ip_address TEXT, user_agent TEXT, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)");
+
+            // Monitoring log tables
+            stmt.execute("CREATE TABLE IF NOT EXISTS perf_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, cpu REAL NOT NULL, mem_jvm INTEGER NOT NULL, mem_jvm_max INTEGER NOT NULL, mem_sys_used INTEGER NOT NULL, mem_sys_total INTEGER NOT NULL, tps REAL NOT NULL, disk_used INTEGER NOT NULL, disk_total INTEGER NOT NULL, game_folder INTEGER NOT NULL, online_count INTEGER NOT NULL)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_perf_logs_ts ON perf_logs(ts)");
+            stmt.execute("CREATE TABLE IF NOT EXISTS player_events (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, player_name TEXT NOT NULL, player_uuid TEXT NOT NULL, event_type INTEGER NOT NULL)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_player_events_ts ON player_events(ts)");
         }
     }
 

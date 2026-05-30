@@ -15,6 +15,8 @@ const Register = () => import('../pages/Register.vue');
 const Forbidden = () => import('../pages/Forbidden.vue');
 const RolesPage = () => import('../pages/admin/Roles.vue');
 const UsersPage = () => import('../pages/admin/Users.vue');
+const SystemSettings = () => import('../pages/admin/SystemSettings.vue');
+const MonitorSettings = () => import('../pages/admin/MonitorSettings.vue');
 
 const UserHome = () => import('../pages/user/Home.vue');
 const UserProfile = () => import('../pages/user/Profile.vue');
@@ -34,9 +36,11 @@ const routes = [
   },
   { path: '/admin', component: AdminLayout, meta: { requiresAuth: true },
     children: [
-      { path: '', redirect: '/admin/roles' },
+      { path: '', redirect: '/admin/system' },
       { path: 'roles', name: 'AdminRoles', component: RolesPage, meta: { permKey: 'admin', minLevel: 1 } },
       { path: 'users', name: 'AdminUsers', component: UsersPage, meta: { permKey: 'admin', minLevel: 1 } },
+      { path: 'system', name: 'AdminSystem', component: SystemSettings, meta: { permKey: 'admin', minLevel: 1 } },
+      { path: 'logs-config', name: 'AdminLogsConfig', component: MonitorSettings, meta: { permKey: 'admin', minLevel: 1 } },
     ]
   },
   { path: '/user', component: UserLayout, meta: { requiresAuth: true },

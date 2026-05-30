@@ -3,6 +3,7 @@ package com.utopiaxc.utopiaserverpanel;
 import com.utopiaxc.utopiaserverpanel.command.USPCommands;
 import com.utopiaxc.utopiaserverpanel.terminal.TerminalCapture;
 import com.utopiaxc.utopiaserverpanel.web.WebServer;
+import com.utopiaxc.utopiaserverpanel.web.service.PlayerEventTracker;
 import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
@@ -12,6 +13,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 
@@ -37,5 +39,23 @@ public class UtopiaServerPanel {
     public void onServerStopping(ServerStoppingEvent event) {
         LOGGER.info("Stopping UtopiaServerPanel...");
         WebServer.stop();
+    }
+
+    @SubscribeEvent
+    public void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
+        var player = event.getEntity();
+        PlayerEventTracker.getInstance().onPlayerJoin(
+                player.getName().getString(),
+                player.getStringUUID()
+        );
+    }
+
+    @SubscribeEvent
+    public void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+        var player = event.getEntity();
+        PlayerEventTracker.getInstance().onPlayerLeave(
+                player.getName().getString(),
+                player.getStringUUID()
+        );
     }
 }

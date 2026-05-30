@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="dashboard">
     <div class="stats-grid" v-if="status">
 
@@ -32,10 +32,10 @@
       <div class="stat-card">
         <h3>{{ $t('summary.memoryUsage') }}</h3>
         <div class="progress-bar-container memory-bar-container" @mouseenter="handleTooltipEnter($event, 'mem')" @mouseleave="showMemTooltip = false">
-          <div class="progress-bar-bg memory-total">
-            <div class="progress-bar-limit memory-jvm-max" :style="{ width: (status.jvmMaxMemory / status.systemTotalMemory * 100) + '%' }">
-              <div class="progress-bar-fill memory-jvm-used" :style="{ width: (status.jvmUsedMemory / status.jvmMaxMemory * 100) + '%' }"></div>
-            </div>
+          <div class="progress-bar-bg memory-total" style="position: relative;">
+            <div class="progress-bar-limit memory-sys-used" :style="{ width: (status.systemUsedMemory / status.systemTotalMemory * 100) + '%' }"></div>
+            <div class="progress-bar-limit memory-jvm-max" :style="{ width: (status.jvmMaxMemory / status.systemTotalMemory * 100) + '%' }"></div>
+            <div class="progress-bar-fill memory-jvm-used" :style="{ width: (status.jvmUsedMemory / status.systemTotalMemory * 100) + '%' }"></div>
           </div>
           <div class="progress-label">{{ formatMemoryInt(status.jvmUsedMemory) }} / {{ formatMemoryInt(status.jvmMaxMemory) }} / {{ formatMemoryInt(status.systemTotalMemory) }}</div>
 
@@ -44,6 +44,7 @@
             <div class="inline-legend-tooltip">
               <div><span class="dot used-dot"></span> {{ $t('summary.jvmUsedMemory') }}: {{ formatMemory(status.jvmUsedMemory) }}</div>
               <div><span class="dot max-dot"></span> {{ $t('summary.jvmMaxMemory') }}: {{ formatMemory(status.jvmMaxMemory) }}</div>
+              <div><span class="dot sys-used-dot"></span> {{ $t('summary.systemUsedMemory') }}: {{ formatMemory(status.systemUsedMemory) }}</div>
               <div><span class="dot total-dot"></span> {{ $t('summary.systemTotalMemory') }}: {{ formatMemory(status.systemTotalMemory) }}</div>
             </div>
           </div>
@@ -231,8 +232,10 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { on, off, fetchStatus } from '../api.js';
 
+const { t } = useI18n();
 const status = ref(null);
 const lastUpdated = ref(null);
 const showWhitelist = ref(false);
@@ -285,10 +288,20 @@ const formatMemoryInt = (bytes) => {
 
 const formatUptime = (ms) => {
   const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  return `${hours}h ${minutes}m ${seconds}s`;
+  
+  if (days > 0) {
+    return t('summary.uptimeFormat.days', { d: days, h: hours, m: minutes });
+  } else if (hours > 0) {
+    return t('summary.uptimeFormat.hours', { h: hours, m: minutes });
+  } else if (minutes > 0) {
+    return t('summary.uptimeFormat.minutes', { m: minutes });
+  } else {
+    return t('summary.uptimeFormat.seconds', { s: seconds });
+  }
 };
 
 const formatUpdateTime = (date) => {
@@ -547,13 +560,33 @@ onUnmounted(() => {
 .memory-total, .disk-total {
   background-color: var(--progress-bg);
 }
+.memory-sys-used {
+  background-color: #f59e0b;
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  z-index: 1;
+}
 .memory-jvm-max, .disk-used {
   background-color: var(--text-secondary);
   height: 100%;
   position: relative;
 }
+.memory-jvm-max {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  opacity: 0.6; /* Semi-transparent so overlapping layers are visible */
+}
 .memory-jvm-used {
   background-color: #10b981;
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  z-index: 3;
 }
 .disk-world {
   background-color: #8b5cf6;
@@ -570,6 +603,7 @@ onUnmounted(() => {
 }
 .used-dot { background-color: #10b981; }
 .max-dot { background-color: var(--text-secondary); }
+.sys-used-dot { background-color: #f59e0b; }
 .total-dot { background-color: var(--dot-total); border: 1px solid var(--dot-total-border); }
 .world-dot { background-color: #8b5cf6; }
 

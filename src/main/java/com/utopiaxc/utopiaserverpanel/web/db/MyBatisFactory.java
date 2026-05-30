@@ -90,6 +90,8 @@ public final class MyBatisFactory {
                     "com.utopiaxc.utopiaserverpanel.web.db.mapper.BindingMapper"));
             configuration.addMapper((Class) Class.forName(
                     "com.utopiaxc.utopiaserverpanel.web.db.mapper.TokenMapper"));
+            configuration.addMapper((Class) Class.forName(
+                    "com.utopiaxc.utopiaserverpanel.web.db.mapper.MonitorMapper"));
         } catch (ClassNotFoundException e) {
             throw new RuntimeException("Failed to register MyBatis mappers", e);
         }

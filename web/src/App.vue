@@ -7,7 +7,9 @@
 
 <script setup>
 import { useAuthStore } from './stores/auth';
+import { useSiteStore } from './stores/site';
 const auth = useAuthStore();
+const site = useSiteStore();
 
 const theme = localStorage.getItem('theme') || 'auto';
 const applyTheme = (t) => {
@@ -19,6 +21,7 @@ applyTheme(theme);
 
 // Validate token on app startup
 auth.init();
+site.fetchSiteName();
 </script>
 
 <style>

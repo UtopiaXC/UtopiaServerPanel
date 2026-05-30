@@ -31,7 +31,9 @@ public class AuthMiddleware implements Middleware {
             "POST/api/auth/logout",
             "POST/api/auth/register",
             "GET/api/auth/guest-permissions",
-            "GET/api/status"
+            "GET/api/status",
+            "GET/api/settings/site",
+            "GET/api/monitor/config"
     );
 
     /** API path prefixes that strictly require authentication (return 401 if no token). */

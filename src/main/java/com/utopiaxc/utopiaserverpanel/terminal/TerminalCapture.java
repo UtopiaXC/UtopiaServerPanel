@@ -63,6 +63,7 @@ public class TerminalCapture extends AbstractAppender {
         JsonObject entry = new JsonObject();
         entry.addProperty("time", new SimpleDateFormat("HH:mm:ss")
                 .format(new Date(event.getTimeMillis())));
+        entry.addProperty("timestamp", event.getTimeMillis());
         entry.addProperty("level", event.getLevel().name());
         entry.addProperty("logger", event.getLoggerName());
         entry.addProperty("thread", event.getThreadName());
@@ -116,6 +117,7 @@ public class TerminalCapture extends AbstractAppender {
         JsonObject entry = new JsonObject();
         entry.addProperty("time", new SimpleDateFormat("HH:mm:ss")
                 .format(new Date()));
+        entry.addProperty("timestamp", System.currentTimeMillis());
         entry.addProperty("level", "WEB");
         entry.addProperty("logger", "WebConsole");
         entry.addProperty("thread", "Web Panel");
@@ -142,6 +144,7 @@ public class TerminalCapture extends AbstractAppender {
         JsonObject entry = new JsonObject();
         entry.addProperty("time", new SimpleDateFormat("HH:mm:ss")
                 .format(new Date()));
+        entry.addProperty("timestamp", System.currentTimeMillis());
         entry.addProperty("level", level);
         entry.addProperty("logger", logger);
         entry.addProperty("thread", "Server");

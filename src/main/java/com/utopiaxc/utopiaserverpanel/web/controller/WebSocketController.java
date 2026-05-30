@@ -142,4 +142,24 @@ public final class WebSocketController {
         wsMsg.add("data", delta);
         channels.writeAndFlush(new TextWebSocketFrame(GSON.toJson(wsMsg)));
     }
+
+    public static void broadcastMonitorLog(java.util.Map<String, Object> log) {
+        var channels = WebSocketFrameHandler.getChannels();
+        if (channels.isEmpty()) return;
+
+        JsonObject wsMsg = new JsonObject();
+        wsMsg.addProperty("type", "new_monitor_log");
+        wsMsg.add("data", GSON.toJsonTree(log));
+        channels.writeAndFlush(new TextWebSocketFrame(GSON.toJson(wsMsg)));
+    }
+
+    public static void broadcastPlayerEvent(java.util.Map<String, Object> event) {
+        var channels = WebSocketFrameHandler.getChannels();
+        if (channels.isEmpty()) return;
+
+        JsonObject wsMsg = new JsonObject();
+        wsMsg.addProperty("type", "new_player_event");
+        wsMsg.add("data", GSON.toJsonTree(event));
+        channels.writeAndFlush(new TextWebSocketFrame(GSON.toJson(wsMsg)));
+    }
 }

@@ -80,12 +80,33 @@ public final class ServerStatusCache {
             }
 
             // Game folder size (expensive, but cached so only once per interval)
-            status.addProperty("gameFolderSize", adapter.getGameFolderSize());
+            long gameFolderSize = adapter.getGameFolderSize();
+            status.addProperty("gameFolderSize", gameFolderSize);
 
             // Server properties
             status.add("properties", adapter.getServerProperties());
 
             cachedStatus.set(status);
+
+            // Feed monitor log accumulator
+            try {
+                double cpu = status.has("cpuLoad") ? status.get("cpuLoad").getAsDouble() : 0;
+                long memJvm = status.has("jvmUsedMemory") ? status.get("jvmUsedMemory").getAsLong() : 0;
+                long memJvmMax = status.has("jvmMaxMemory") ? status.get("jvmMaxMemory").getAsLong() : 0;
+                long memSysUsed = status.has("systemUsedMemory") ? status.get("systemUsedMemory").getAsLong() : 0;
+                long memSysTotal = status.has("systemTotalMemory") ? status.get("systemTotalMemory").getAsLong() : 0;
+                double tps = status.has("tps") ? status.get("tps").getAsDouble() : 20.0;
+                long diskTotal = status.has("diskTotalSpace") ? status.get("diskTotalSpace").getAsLong() : 0;
+                long diskFree = status.has("diskFreeSpace") ? status.get("diskFreeSpace").getAsLong() : 0;
+                long diskUsed = diskTotal - diskFree;
+                int onlineCount = status.has("onlinePlayers") ? status.get("onlinePlayers").getAsInt() : 0;
+
+                com.utopiaxc.utopiaserverpanel.web.service.MonitorLogService.addSample(
+                        cpu, memJvm, memJvmMax, memSysUsed, memSysTotal,
+                        tps, diskUsed, diskTotal, gameFolderSize, onlineCount);
+            } catch (Exception ignored) {
+                // Don't let monitoring failures affect the status cache
+            }
         } catch (Exception e) {
             UtopiaServerPanel.LOGGER.warn("ServerStatusCache refresh error", e);
         }
