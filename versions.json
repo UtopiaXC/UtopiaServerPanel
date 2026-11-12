@@ -11,7 +11,7 @@
       "mc": "1.7.10",
       "era": "legacy",
       "jdk": 8,
-      "gradleJdk": 21,
+      "gradleJdk": 25,
       "minecraftRange": "[1.7.10]",
       "loaders": ["forge"],
       "forge": "1.7.10-10.13.4.1614-1.7.10",

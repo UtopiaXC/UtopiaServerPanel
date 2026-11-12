@@ -45,7 +45,7 @@ jobs:
             mc: '1.20.1'
           - name: legacy-forge-1.7.10
             jdk: 8
-            gradle_jdk: 21
+            gradle_jdk: 25
             project_dir: legacy/forge-1.7.10
             mc: '1.7.10'
           - name: legacy-forge-1.12.2
