@@ -1,7 +1,7 @@
 plugins {
     id 'java'
     id 'com.gtnewhorizons.retrofuturagradle' version '2.0.6'
-    id 'com.gradleup.shadow' version '9.0.0-beta12'
+    id 'com.gradleup.shadow' version '9.3.2'
 }
 
 def rootProps = new Properties()
@@ -51,6 +51,13 @@ configurations {
             attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements, LibraryElements.JAR))
         }
     }
+}
+
+afterEvaluate {
+    configurations.shade.attributes.attribute(
+            com.gtnewhorizons.retrofuturagradle.modutils.ModUtils.DEOBFUSCATOR_TRANSFORMED,
+            Boolean.FALSE
+    )
 }
 
 dependencies {
