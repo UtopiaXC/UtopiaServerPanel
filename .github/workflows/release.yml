@@ -1,0 +1,282 @@
+name: Release
+run-name: Release ${{ github.ref_name }} by @${{ github.actor }}
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Custom Tag (e.g. v1.0.0)'
+        required: false
+        default: ''
+      push:
+        description: 'Create GitHub Release'
+        required: true
+        type: boolean
+        default: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  version:
+    name: Resolve Version & Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      note_file: ${{ steps.resolve.outputs.note_file }}
+      legacy_matrix: ${{ steps.matrix.outputs.legacy_matrix }}
+      modern_matrix: ${{ steps.matrix.outputs.modern_matrix }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve Version and Note
+        id: resolve
+        shell: bash
+        env:
+          INPUT_TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [ -n "$INPUT_TAG_NAME" ]; then
+            TAG="$INPUT_TAG_NAME"
+          fi
+          cleanVersion="${TAG#v}"
+          cleanVersion="${cleanVersion%+*}"
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${cleanVersion}" >> "$GITHUB_OUTPUT"
+
+          notePathWithV="assets/release_note/${TAG}.md"
+          notePathWithoutV="assets/release_note/${cleanVersion}.md"
+
+          if [ -f "$notePathWithV" ]; then
+            echo "note_file=$notePathWithV" >> "$GITHUB_OUTPUT"
+          elif [ -f "$notePathWithoutV" ]; then
+            echo "note_file=$notePathWithoutV" >> "$GITHUB_OUTPUT"
+          else
+            echo "note_file=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Emit Build Matrices
+        id: matrix
+        shell: bash
+        run: python3 scripts/ci_helpers.py emit-matrices
+
+  build-frontend:
+    name: Build Web Frontend
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install & Build Frontend
+        run: |
+          cd web
+          npm ci
+          npm run build
+
+      - name: Upload Frontend Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 1
+
+  build-core:
+    name: Build Core & JVM Bridge
+    needs: [version, build-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Frontend Bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Core Modules
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build --no-daemon -PskipWeb=true -Pmod_version=${{ needs.version.outputs.version }}
+
+  build-legacy:
+    name: Build Legacy (${{ matrix.mc }} ${{ matrix.loader }})
+    needs: [version, build-frontend, build-core]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.version.outputs.legacy_matrix) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Frontend Bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: Setup Target Toolchain JDK (${{ matrix.jdk }})
+        if: matrix.jdk != matrix.gradle_jdk
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'temurin'
+
+      - name: Setup Gradle Runtime JDK (${{ matrix.gradle_jdk }})
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.gradle_jdk }}
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build ${{ matrix.loader }} ${{ matrix.mc }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew -p "${{ matrix.project_dir }}" build --no-daemon -PskipWeb=true -Pmod_version=${{ needs.version.outputs.version }}
+
+      - name: Collect Release Artifact
+        shell: bash
+        run: |
+          mkdir -p dist_release
+          JAR_NAME="UtopiaServerPanel-${{ needs.version.outputs.version }}-mc${{ matrix.mc }}-${{ matrix.loader }}.jar"
+          SRC_JAR="${{ matrix.project_dir }}/build/libs/${JAR_NAME}"
+          test -f "$SRC_JAR"
+          cp "$SRC_JAR" "dist_release/${JAR_NAME}"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mod-jar-${{ matrix.mc }}-${{ matrix.loader }}
+          path: dist_release/*.jar
+          retention-days: 7
+          if-no-files-found: error
+
+  build-modern:
+    name: Build ${{ matrix.mc }} (${{ matrix.loader }})
+    needs: [version, build-frontend, build-core]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        include: ${{ fromJson(needs.version.outputs.modern_matrix) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Frontend Bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: Setup Target Toolchain JDK (${{ matrix.jdk }})
+        if: matrix.jdk != matrix.gradle_jdk
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'temurin'
+
+      - name: Setup Gradle Runtime JDK (${{ matrix.gradle_jdk }})
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.gradle_jdk }}
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build ${{ matrix.loader }} ${{ matrix.mc }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew -p "${{ matrix.project_dir }}" build --no-daemon -PskipWeb=true -Ptarget_mc=${{ matrix.mc }} -Pmod_version=${{ needs.version.outputs.version }}
+
+      - name: Collect Release Artifact
+        shell: bash
+        run: |
+          mkdir -p dist_release
+          JAR_NAME="UtopiaServerPanel-${{ needs.version.outputs.version }}-mc${{ matrix.mc }}-${{ matrix.loader }}.jar"
+          SRC_JAR="${{ matrix.project_dir }}/build/libs/${JAR_NAME}"
+          test -f "$SRC_JAR"
+          cp "$SRC_JAR" "dist_release/${JAR_NAME}"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mod-jar-${{ matrix.mc }}-${{ matrix.loader }}
+          path: dist_release/*.jar
+          retention-days: 7
+          if-no-files-found: error
+
+  publish-release:
+    name: Create GitHub Release
+    needs: [version, build-legacy, build-modern]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.push != false)
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Built Mod JARs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mod-jar-*
+          path: dist_release
+          merge-multiple: true
+
+      - name: Render Release Body & Verify Size Limits
+        shell: bash
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+          NOTE_FILE: ${{ needs.version.outputs.note_file }}
+        run: |
+          python3 scripts/ci_helpers.py render-release-body \
+            --tag "$TAG" \
+            --version "$VERSION" \
+            --note "$NOTE_FILE" \
+            --artifacts-dir dist_release \
+            --output release_body.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: UtopiaServerPanel ${{ needs.version.outputs.tag }}
+          tag_name: ${{ needs.version.outputs.tag }}
+          body_path: release_body.md
+          files: dist_release/*.jar
+          draft: false
+          prerelease: ${{ contains(needs.version.outputs.tag, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

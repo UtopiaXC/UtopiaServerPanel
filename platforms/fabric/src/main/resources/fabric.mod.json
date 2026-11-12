@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "version": "${mod_version}",
+  "name": "${mod_name}",
+  "description": "A panel for displaying and managing real-time server status in a browser.",
+  "authors": ["UtopiaXC"],
+  "license": "${mod_license}",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.utopiaxc.utopiaserverpanel.platform.fabric.UtopiaServerPanelFabricMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=${fabric_loader}",
+    "${fabric_api_modid}": "*",
+    "minecraft": "${fabric_range}",
+    "java": ">=${java_version}"
+  }
+}
+

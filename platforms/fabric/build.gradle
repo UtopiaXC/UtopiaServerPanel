@@ -1,0 +1,187 @@
+buildscript {
+    repositories {
+        maven {
+            name = 'Fabric'
+            url = 'https://maven.fabricmc.net/'
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    dependencies {
+        classpath 'net.fabricmc:fabric-loom:1.15.5'
+    }
+}
+
+plugins {
+    id 'java'
+    id 'java-library'
+    id 'com.gradleup.shadow' version '9.3.2'
+}
+
+def rootProps = new Properties()
+new File(rootProject.projectDir, '../../gradle.properties').withInputStream { rootProps.load(it) }
+def repoRoot = new File(rootProject.projectDir, '../..')
+
+apply from: new File(repoRoot, 'gradle/preprocess.gradle')
+apply from: new File(repoRoot, 'gradle/packaging.gradle')
+apply from: new File(repoRoot, 'gradle/constants.gradle')
+
+def targetMc = providers.gradleProperty('target_mc').orElse('1.21.1').get()
+def loaded = loadVersionTarget(repoRoot, targetMc)
+def manifest = loaded.manifest
+def targetMeta = loaded.target
+if (!(targetMeta.loaders as List).contains('fabric')) {
+    throw new GradleException("Fabric does not support Minecraft ${targetMc}")
+}
+
+boolean obfuscated = (targetMeta.obfuscated != false)
+apply plugin: (obfuscated ? 'net.fabricmc.fabric-loom-remap' : 'net.fabricmc.fabric-loom')
+
+def resolvedModVersion = providers.gradleProperty('mod_version').orElse(rootProps.getProperty('mod_version', '1.0.0')).get()
+def modId = manifest.modId as String
+
+group = manifest.modGroup as String
+version = resolvedModVersion
+
+base {
+    archivesName = "${manifest.artifactPrefix}-mc${targetMc}-fabric"
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(targetMeta.jdk as int)
+}
+
+def preprocessedDir = layout.buildDirectory.dir('generated/sources/usp-modern/java').get().asFile
+preprocessTrees(
+        [new File(repoRoot, 'platforms/modern-shared/src/main/java'), file('src/main/templates-java')],
+        preprocessedDir,
+        targetMc,
+        'fabric'
+)
+
+def buildConst = registerBuildConstantsTask(project, targetMeta, manifest, resolvedModVersion, "Fabric ${targetMc}")
+
+sourceSets.main.java.srcDir(preprocessedDir)
+sourceSets.main.java.srcDir(buildConst.dir)
+sourceSets.main.resources.srcDir(new File(repoRoot, 'platforms/modern-shared/src/main/resources'))
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    shade {
+        canBeConsumed = false
+        canBeResolved = true
+        if (!(targetMeta.bundleSlf4j == true)) {
+            exclude group: 'org.slf4j'
+        }
+        exclude group: 'com.google.code.gson'
+        attributes {
+            attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category, Category.LIBRARY))
+            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
+            attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements, LibraryElements.JAR))
+        }
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${targetMc}"
+    if (obfuscated) {
+        mappings loom.officialMojangMappings()
+        modImplementation "net.fabricmc:fabric-loader:${targetMeta.fabricLoader}"
+        modImplementation "net.fabricmc.fabric-api:fabric-api:${targetMeta.fabricApi}"
+    } else {
+        implementation "net.fabricmc:fabric-loader:${targetMeta.fabricLoader}"
+        implementation "net.fabricmc.fabric-api:fabric-api:${targetMeta.fabricApi}"
+    }
+
+    implementation 'com.utopiaxc.utopiaserverpanel:core'
+    implementation 'com.utopiaxc.utopiaserverpanel:bridge-modern-jvm'
+    shade 'com.utopiaxc.utopiaserverpanel:core'
+    shade 'com.utopiaxc.utopiaserverpanel:bridge-modern-jvm'
+
+    def nettyVer = (targetMeta.nettyHttpVersion ?: '4.1.97.Final') as String
+    if (targetMeta.fullShadedNetty == true) {
+        shade("io.netty:netty-codec-http:${nettyVer}") { transitive = false }
+        shade("io.netty:netty-codec:${nettyVer}") { transitive = false }
+        shade("io.netty:netty-handler:${nettyVer}") { transitive = false }
+        shade("io.netty:netty-transport:${nettyVer}") { transitive = false }
+        shade("io.netty:netty-buffer:${nettyVer}") { transitive = false }
+        shade("io.netty:netty-common:${nettyVer}") { transitive = false }
+    } else {
+        shade("io.netty:netty-codec-http:${nettyVer}") { transitive = false }
+    }
+    if (targetMeta.bundleSlf4j == true) {
+        shade('org.slf4j:slf4j-api:1.7.36') { transitive = false }
+        shade('org.slf4j:slf4j-nop:1.7.36') { transitive = false }
+    }
+}
+
+def mcTuple = parseMcTuple(targetMc)
+def fabricApiModId = compareMcTuple(mcTuple, [1, 18, 0]) < 0 ? 'fabric' : 'fabric-api'
+
+tasks.named('processResources', ProcessResources).configure {
+    def replaceProps = [
+            mod_id           : modId,
+            mod_name         : manifest.modName as String,
+            mod_version      : resolvedModVersion,
+            mod_license      : manifest.modLicense as String,
+            fabric_loader    : targetMeta.fabricLoader as String,
+            fabric_range     : targetMeta.fabricRange as String,
+            java_version     : (targetMeta.jdk as int).toString(),
+            fabric_api_modid : fabricApiModId,
+    ]
+    inputs.properties(replaceProps)
+    filesMatching('fabric.mod.json') {
+        expand(replaceProps)
+    }
+}
+
+tasks.named('compileJava').configure {
+    dependsOn buildConst.task
+}
+
+tasks.named('jar', Jar).configure {
+    archiveClassifier = 'slim'
+}
+
+def finalFileName = "${manifest.artifactPrefix}-${resolvedModVersion}-mc${targetMc}-fabric.jar"
+
+tasks.named('shadowJar').configure { shadow ->
+    dependsOn tasks.named('jar'), buildConst.task
+    shadow.configurations = [project.configurations.shade]
+    shadow.archiveClassifier = obfuscated ? 'dev-shadow' : ''
+    if (!obfuscated) {
+        shadow.archiveFileName = finalFileName
+    }
+    configureUspShadowRules(shadow, targetMeta)
+    if (!obfuscated) {
+        shadow.doLast {
+            enforceJarSizeLimit(shadow.archiveFile.get().asFile, (manifest.maxJarBytes as Number).longValue())
+        }
+    }
+}
+
+if (obfuscated) {
+    tasks.named('remapJar').configure { remap ->
+        dependsOn tasks.named('shadowJar')
+        inputFile.set(tasks.named('shadowJar').flatMap { it.archiveFile })
+        archiveClassifier = ''
+        archiveFileName = finalFileName
+        doLast {
+            enforceJarSizeLimit(archiveFile.get().asFile, (manifest.maxJarBytes as Number).longValue())
+        }
+    }
+    tasks.named('assemble').configure {
+        dependsOn tasks.named('remapJar')
+    }
+} else {
+    tasks.named('assemble').configure {
+        dependsOn tasks.named('shadowJar')
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}

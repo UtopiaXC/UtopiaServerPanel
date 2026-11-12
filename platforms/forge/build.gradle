@@ -1,0 +1,261 @@
+import groovy.json.JsonSlurper
+
+buildscript {
+    def targetMc = project.hasProperty('target_mc') ? project.property('target_mc').toString() : '1.20.1'
+    def manifest = new JsonSlurper().parse(new File(project.projectDir, '../../versions.json'))
+    def targetMeta = manifest.baselines.find { it.mc == targetMc }
+    def forgePlugin = targetMeta != null ? (targetMeta.forgePlugin as String) : 'legacyforge'
+
+    repositories {
+        maven { name = 'Wagyourtail'; url = 'https://maven.wagyourtail.xyz/releases' }
+        maven { name = 'NeoForged'; url = 'https://maven.neoforged.net/releases' }
+        maven { name = 'MinecraftForge'; url = 'https://maven.minecraftforge.net/' }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    dependencies {
+        if (forgePlugin == 'unimined') {
+            classpath 'xyz.wagyourtail.unimined:unimined:1.4.1'
+        } else if (forgePlugin == 'legacyforge') {
+            classpath 'net.neoforged:moddev-gradle:2.0.148'
+        } else if (forgePlugin == 'fg7') {
+            classpath 'net.minecraftforge:forgegradle:7.0.40'
+        } else {
+            throw new GradleException("Unsupported forgePlugin '${forgePlugin}' for ${targetMc}")
+        }
+    }
+}
+
+plugins {
+    id 'java'
+    id 'java-library'
+    id 'com.gradleup.shadow' version '9.3.2'
+}
+
+def rootProps = new Properties()
+new File(rootProject.projectDir, '../../gradle.properties').withInputStream { rootProps.load(it) }
+def repoRoot = new File(rootProject.projectDir, '../..')
+
+apply from: new File(repoRoot, 'gradle/preprocess.gradle')
+apply from: new File(repoRoot, 'gradle/packaging.gradle')
+apply from: new File(repoRoot, 'gradle/constants.gradle')
+
+def targetMc = providers.gradleProperty('target_mc').orElse('1.20.1').get()
+def loaded = loadVersionTarget(repoRoot, targetMc)
+def manifest = loaded.manifest
+def targetMeta = loaded.target
+if (!(targetMeta.loaders as List).contains('forge') || targetMeta.era != 'modern') {
+    throw new GradleException("Modern Forge does not target Minecraft ${targetMc}")
+}
+
+def forgePlugin = targetMeta.forgePlugin as String
+if (forgePlugin == 'unimined') {
+    apply plugin: 'xyz.wagyourtail.unimined'
+} else if (forgePlugin == 'legacyforge') {
+    apply plugin: 'net.neoforged.moddev.legacyforge'
+} else if (forgePlugin == 'fg7') {
+    apply plugin: 'net.minecraftforge.gradle'
+}
+
+def resolvedModVersion = providers.gradleProperty('mod_version').orElse(rootProps.getProperty('mod_version', '1.0.0')).get()
+def modId = manifest.modId as String
+
+group = manifest.modGroup as String
+version = resolvedModVersion
+
+base {
+    archivesName = "${manifest.artifactPrefix}-mc${targetMc}-forge"
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(targetMeta.jdk as int)
+}
+
+def preprocessedDir = layout.buildDirectory.dir('generated/sources/usp-modern/java').get().asFile
+preprocessTrees(
+        [new File(repoRoot, 'platforms/modern-shared/src/main/java'), file('src/main/templates-java')],
+        preprocessedDir,
+        targetMc,
+        'forge'
+)
+
+def buildConst = registerBuildConstantsTask(project, targetMeta, manifest, resolvedModVersion, "Forge ${targetMc}")
+
+sourceSets.main.java.srcDir(preprocessedDir)
+sourceSets.main.java.srcDir(buildConst.dir)
+sourceSets.main.resources.srcDir(new File(repoRoot, 'platforms/modern-shared/src/main/resources'))
+
+repositories {
+    mavenCentral()
+    if (forgePlugin == 'fg7') {
+        maven minecraft.mavenizer
+        maven { name = 'MinecraftForge'; url = 'https://maven.minecraftforge.net/' }
+        maven { name = 'MinecraftLibraries'; url = 'https://libraries.minecraft.net/' }
+    }
+}
+
+configurations {
+    shade {
+        canBeConsumed = false
+        canBeResolved = true
+        if (!(targetMeta.bundleSlf4j == true)) {
+            exclude group: 'org.slf4j'
+        }
+        exclude group: 'com.google.code.gson'
+        attributes {
+            attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category, Category.LIBRARY))
+            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
+            attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements, LibraryElements.JAR))
+        }
+    }
+}
+
+if (forgePlugin == 'unimined') {
+    unimined.minecraft {
+        version targetMc
+        mappings {
+            mojmap()
+        }
+        minecraftForge {
+            loader targetMeta.forgeVersionOnly as String
+        }
+        defaultRemapJar = true
+    }
+} else if (forgePlugin == 'legacyforge') {
+    legacyForge {
+        version = targetMeta.forge as String
+        mods {
+            "${modId}" {
+                sourceSet(sourceSets.main)
+            }
+        }
+    }
+} else if (forgePlugin == 'fg7') {
+    minecraft {
+        mappings channel: 'official', version: targetMc
+    }
+}
+
+dependencies {
+    if (forgePlugin == 'fg7') {
+        implementation minecraft.dependency("net.minecraftforge:forge:${targetMeta.forge}")
+    }
+
+    implementation 'com.utopiaxc.utopiaserverpanel:core'
+    implementation 'com.utopiaxc.utopiaserverpanel:bridge-modern-jvm'
+    shade 'com.utopiaxc.utopiaserverpanel:core'
+    shade 'com.utopiaxc.utopiaserverpanel:bridge-modern-jvm'
+
+    def nettyVer = (targetMeta.nettyHttpVersion ?: '4.1.97.Final') as String
+    if (targetMeta.fullShadedNetty == true) {
+        shade("io.netty:netty-codec-http:${nettyVer}") { transitive = false }
+        shade("io.netty:netty-codec:${nettyVer}") { transitive = false }
+        shade("io.netty:netty-handler:${nettyVer}") { transitive = false }
+        shade("io.netty:netty-transport:${nettyVer}") { transitive = false }
+        shade("io.netty:netty-buffer:${nettyVer}") { transitive = false }
+        shade("io.netty:netty-common:${nettyVer}") { transitive = false }
+    } else {
+        shade("io.netty:netty-codec-http:${nettyVer}") { transitive = false }
+    }
+    if (targetMeta.bundleSlf4j == true) {
+        shade('org.slf4j:slf4j-api:1.7.36') { transitive = false }
+        shade('org.slf4j:slf4j-nop:1.7.36') { transitive = false }
+    }
+
+    if (forgePlugin == 'legacyforge') {
+        additionalRuntimeClasspath 'com.utopiaxc.utopiaserverpanel:core'
+        additionalRuntimeClasspath 'com.utopiaxc.utopiaserverpanel:bridge-modern-jvm'
+        additionalRuntimeClasspath 'org.xerial:sqlite-jdbc:3.45.3.0'
+        additionalRuntimeClasspath 'org.mindrot:jbcrypt:0.4'
+        additionalRuntimeClasspath 'org.mybatis:mybatis:3.5.16'
+        additionalRuntimeClasspath("io.netty:netty-codec-http:${nettyVer}") { transitive = false }
+    }
+}
+
+def mcTuple = parseMcTuple(targetMc)
+def depRequirementField = compareMcTuple(mcTuple, [1, 20, 6]) >= 0 ? 'type="required"' : 'mandatory=true'
+
+def generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
+    def replaceProperties = [
+            minecraft_version_range: targetMeta.minecraftRange as String,
+            forge_version          : targetMeta.forgeVersionOnly as String,
+            loader_version_range   : targetMeta.forgeLoaderRange as String,
+            dep_requirement        : depRequirementField,
+            mod_id                 : modId,
+            mod_name               : manifest.modName as String,
+            mod_license            : manifest.modLicense as String,
+            mod_version            : resolvedModVersion,
+    ]
+    inputs.properties(replaceProperties)
+    from('src/main/templates') {
+        include 'META-INF/mods.toml'
+    }
+    expand(replaceProperties)
+    into(layout.buildDirectory.dir('generated/sources/modMetadata'))
+}
+
+sourceSets.main.resources.srcDir(generateModMetadata)
+if (forgePlugin == 'legacyforge') {
+    legacyForge.ideSyncTask(generateModMetadata)
+}
+
+tasks.named('compileJava').configure {
+    dependsOn buildConst.task
+}
+
+tasks.named('jar', Jar).configure {
+    archiveClassifier = 'slim'
+}
+
+def finalFileName = "${manifest.artifactPrefix}-${resolvedModVersion}-mc${targetMc}-forge.jar"
+boolean needsRemap = (forgePlugin == 'unimined' || forgePlugin == 'legacyforge')
+
+tasks.named('shadowJar').configure { shadow ->
+    dependsOn tasks.named('jar'), buildConst.task
+    shadow.configurations = [project.configurations.shade]
+    shadow.archiveClassifier = needsRemap ? 'dev-shadow' : ''
+    if (!needsRemap) {
+        shadow.archiveFileName = finalFileName
+    }
+    configureUspShadowRules(shadow, targetMeta)
+    if (!needsRemap) {
+        shadow.doLast {
+            enforceJarSizeLimit(shadow.archiveFile.get().asFile, (manifest.maxJarBytes as Number).longValue())
+        }
+    }
+}
+
+if (forgePlugin == 'unimined') {
+    tasks.named('remapJar').configure { remap ->
+        dependsOn tasks.named('shadowJar')
+        inputFile.set(tasks.named('shadowJar').flatMap { it.archiveFile })
+        archiveClassifier = ''
+        archiveFileName = finalFileName
+        doLast {
+            enforceJarSizeLimit(archiveFile.get().asFile, (manifest.maxJarBytes as Number).longValue())
+        }
+    }
+    tasks.named('assemble').configure {
+        dependsOn tasks.named('remapJar')
+    }
+} else if (forgePlugin == 'legacyforge') {
+    def reobfShadow = obfuscation.reobfuscate(tasks.named('shadowJar'), sourceSets.main)
+    reobfShadow.configure {
+        archiveClassifier = ''
+        archiveFileName = finalFileName
+        doLast {
+            enforceJarSizeLimit(archiveFile.get().asFile, (manifest.maxJarBytes as Number).longValue())
+        }
+    }
+    tasks.named('assemble').configure {
+        dependsOn reobfShadow
+    }
+} else {
+    tasks.named('assemble').configure {
+        dependsOn tasks.named('shadowJar')
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}

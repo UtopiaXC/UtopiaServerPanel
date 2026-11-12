@@ -1,0 +1,168 @@
+plugins {
+    id 'java'
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.148'
+    id 'com.gradleup.shadow' version '9.3.2'
+}
+
+def rootProps = new Properties()
+new File(rootProject.projectDir, '../../gradle.properties').withInputStream { rootProps.load(it) }
+def repoRoot = new File(rootProject.projectDir, '../..')
+
+apply from: new File(repoRoot, 'gradle/preprocess.gradle')
+apply from: new File(repoRoot, 'gradle/packaging.gradle')
+apply from: new File(repoRoot, 'gradle/constants.gradle')
+
+def targetMc = providers.gradleProperty('target_mc').orElse('1.21.1').get()
+def loaded = loadVersionTarget(repoRoot, targetMc)
+def manifest = loaded.manifest
+def targetMeta = loaded.target
+if (!(targetMeta.loaders as List).contains('neoforge')) {
+    throw new GradleException("NeoForge does not support Minecraft ${targetMc}")
+}
+
+def resolvedModVersion = providers.gradleProperty('mod_version').orElse(rootProps.getProperty('mod_version', '1.0.0')).get()
+def modId = manifest.modId as String
+
+group = manifest.modGroup as String
+version = resolvedModVersion
+
+base {
+    archivesName = "${manifest.artifactPrefix}-mc${targetMc}-neoforge"
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(targetMeta.jdk as int)
+}
+
+def preprocessedDir = layout.buildDirectory.dir('generated/sources/usp-modern/java').get().asFile
+preprocessTrees(
+        [new File(repoRoot, 'platforms/modern-shared/src/main/java'), file('src/main/templates-java')],
+        preprocessedDir,
+        targetMc,
+        'neoforge'
+)
+
+def buildConst = registerBuildConstantsTask(project, targetMeta, manifest, resolvedModVersion, "NeoForge ${targetMc}")
+
+sourceSets.main.java.srcDir(preprocessedDir)
+sourceSets.main.java.srcDir(buildConst.dir)
+sourceSets.main.resources.srcDir(new File(repoRoot, 'platforms/modern-shared/src/main/resources'))
+
+def runDir = layout.projectDirectory.dir('../../run')
+
+neoForge {
+    version = targetMeta.neoforge as String
+
+    runs {
+        client {
+            client()
+            gameDirectory = runDir
+            systemProperty 'neoforge.enabledGameTestNamespaces', modId
+        }
+        server {
+            server()
+            gameDirectory = runDir
+            programArgument '--nogui'
+            systemProperty 'neoforge.enabledGameTestNamespaces', modId
+        }
+    }
+
+    mods {
+        "${modId}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    shade {
+        canBeConsumed = false
+        canBeResolved = true
+        exclude group: 'org.slf4j'
+        exclude group: 'com.google.code.gson'
+        attributes {
+            attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category, Category.LIBRARY))
+            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
+            attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements, LibraryElements.JAR))
+        }
+    }
+}
+
+def mcTuple = parseMcTuple(targetMc)
+
+dependencies {
+    implementation 'com.utopiaxc.utopiaserverpanel:core'
+    implementation 'com.utopiaxc.utopiaserverpanel:bridge-modern-jvm'
+    shade 'com.utopiaxc.utopiaserverpanel:core'
+    shade 'com.utopiaxc.utopiaserverpanel:bridge-modern-jvm'
+
+    def nettyVer = (targetMeta.nettyHttpVersion ?: '4.1.97.Final') as String
+    shade("io.netty:netty-codec-http:${nettyVer}") { transitive = false }
+    if (compareMcTuple(mcTuple, [1, 21, 9]) < 0) {
+        additionalRuntimeClasspath("io.netty:netty-codec-http:${nettyVer}") { transitive = false }
+        additionalRuntimeClasspath 'com.utopiaxc.utopiaserverpanel:core'
+        additionalRuntimeClasspath 'com.utopiaxc.utopiaserverpanel:bridge-modern-jvm'
+        additionalRuntimeClasspath 'org.xerial:sqlite-jdbc:3.45.3.0'
+        additionalRuntimeClasspath 'org.mindrot:jbcrypt:0.4'
+        additionalRuntimeClasspath 'org.mybatis:mybatis:3.5.16'
+    } else {
+        runtimeOnly("io.netty:netty-codec-http:${nettyVer}") { transitive = false }
+    }
+}
+
+boolean useLegacyModsToml = compareMcTuple(mcTuple, [1, 20, 5]) < 0
+def metadataTemplateName = useLegacyModsToml ? 'META-INF/mods.toml' : 'META-INF/neoforge.mods.toml'
+
+def generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
+    def replaceProperties = [
+            minecraft_version_range: targetMeta.minecraftRange as String,
+            neo_version            : targetMeta.neoforge as String,
+            loader_version_range   : targetMeta.neoforgeLoaderRange as String,
+            mod_id                 : modId,
+            mod_name               : manifest.modName as String,
+            mod_license            : manifest.modLicense as String,
+            mod_version            : resolvedModVersion,
+    ]
+    inputs.properties(replaceProperties)
+    inputs.property('metadataTemplateName', metadataTemplateName)
+    from('src/main/templates') {
+        include metadataTemplateName
+    }
+    expand(replaceProperties)
+    into(layout.buildDirectory.dir('generated/sources/modMetadata'))
+}
+
+sourceSets.main.resources.srcDir(generateModMetadata)
+neoForge.ideSyncTask(generateModMetadata)
+
+tasks.named('jar', Jar).configure {
+    archiveClassifier = 'slim'
+}
+
+tasks.named('shadowJar').configure { shadow ->
+    dependsOn tasks.named('jar'), buildConst.task
+    shadow.configurations = [project.configurations.shade]
+    shadow.archiveClassifier = ''
+    shadow.archiveFileName = "${manifest.artifactPrefix}-${resolvedModVersion}-mc${targetMc}-neoforge.jar"
+    configureUspShadowRules(shadow, targetMeta)
+    doLast {
+        enforceJarSizeLimit(shadow.archiveFile.get().asFile, (manifest.maxJarBytes as Number).longValue())
+    }
+}
+
+tasks.named('compileJava').configure {
+    dependsOn buildConst.task
+}
+
+tasks.named('assemble').configure {
+    dependsOn tasks.named('shadowJar')
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}

@@ -2,29 +2,87 @@ name: Build
 
 on: [push, pull_request]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  build-smoke:
+    name: Smoke Build (${{ matrix.name }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: core-and-neoforge-1.21.1
+            jdk: 21
+            gradle_jdk: 21
+            project_dir: platforms/neoforge
+            mc: '1.21.1'
+          - name: neoforge-26.3
+            jdk: 25
+            gradle_jdk: 25
+            project_dir: platforms/neoforge
+            mc: '26.3'
+          - name: fabric-1.20.1
+            jdk: 17
+            gradle_jdk: 21
+            project_dir: platforms/fabric
+            mc: '1.20.1'
+          - name: fabric-26.3
+            jdk: 25
+            gradle_jdk: 25
+            project_dir: platforms/fabric
+            mc: '26.3'
+          - name: forge-1.20.1
+            jdk: 17
+            gradle_jdk: 21
+            project_dir: platforms/forge
+            mc: '1.20.1'
+          - name: legacy-forge-1.7.10
+            jdk: 8
+            gradle_jdk: 21
+            project_dir: legacy/forge-1.7.10
+            mc: '1.7.10'
+          - name: legacy-forge-1.12.2
+            jdk: 8
+            gradle_jdk: 21
+            project_dir: legacy/forge-1.12.2
+            mc: '1.12.2'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
 
-      - name: Setup JDK 21
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build Frontend
+        run: |
+          cd web
+          npm ci
+          npm run build
+
+      - name: Setup Target Toolchain JDK (${{ matrix.jdk }})
+        if: matrix.jdk != matrix.gradle_jdk
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: ${{ matrix.jdk }}
+          distribution: 'temurin'
+
+      - name: Setup Gradle Runtime JDK (${{ matrix.gradle_jdk }})
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.gradle_jdk }}
           distribution: 'temurin'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # This is needed to be able to run ./gradlew below
-      # You can run `git update-index --chmod +x gradlew` then remove this step.
-      - name: Make Gradle wrapper executable
-        run: chmod +x ./gradlew
-
-      - name: Build with Gradle
-        run: ./gradlew build
+      - name: Build Target
+        run: |
+          chmod +x ./gradlew
+          ./gradlew -p "${{ matrix.project_dir }}" build --no-daemon -PskipWeb=true -Ptarget_mc=${{ matrix.mc }}

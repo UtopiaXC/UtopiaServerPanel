@@ -1,0 +1,13 @@
+[
+  {
+    "modid": "${mod_id}",
+    "name": "${mod_name}",
+    "description": "A panel for displaying and managing real-time server status in a browser.",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "url": "https://github.com/UtopiaXC",
+    "authorList": ["UtopiaXC"],
+    "credits": ""
+  }
+]
+

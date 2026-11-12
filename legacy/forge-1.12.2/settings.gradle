@@ -1,0 +1,27 @@
+pluginManagement {
+    repositories {
+        maven {
+            name = 'Wagyourtail'
+            url = 'https://maven.wagyourtail.xyz/releases'
+        }
+        maven {
+            name = 'MinecraftForge'
+            url = 'https://maven.minecraftforge.net/'
+        }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'usp_legacy_1_12_2'
+
+includeBuild('../..') {
+    dependencySubstitution {
+        substitute module('com.utopiaxc.utopiaserverpanel:core') using project(':core')
+    }
+}
+

@@ -1,0 +1,128 @@
+:root {
+  --usp-bg: #f5f7f9;
+  --usp-surface: #ffffff;
+  --usp-surface-subtle: #f9fafb;
+  --usp-border: #e5e7eb;
+  --usp-text: #1f2937;
+  --usp-text-muted: #6b7280;
+  --usp-primary: #18a058;
+  --usp-primary-soft: rgba(24, 160, 88, 0.12);
+  --usp-terminal-bg: #f8fafc;
+  --usp-terminal-text: #1e293b;
+  --usp-terminal-border: #e2e8f0;
+  --usp-chart-grid: rgba(100, 116, 139, 0.15);
+  --usp-chart-axis: #64748b;
+  --usp-chart-tooltip-bg: rgba(255, 255, 255, 0.96);
+  --usp-chart-tooltip-border: #e2e8f0;
+  --usp-card-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+}
+
+html.dark {
+  --usp-bg: #101014;
+  --usp-surface: #18181c;
+  --usp-surface-subtle: #202026;
+  --usp-border: #2a2a32;
+  --usp-text: #e5e7eb;
+  --usp-text-muted: #9ca3af;
+  --usp-primary: #63e2b7;
+  --usp-primary-soft: rgba(99, 226, 183, 0.14);
+  --usp-terminal-bg: #111318;
+  --usp-terminal-text: #e2e8f0;
+  --usp-terminal-border: #262933;
+  --usp-chart-grid: rgba(148, 163, 184, 0.12);
+  --usp-chart-axis: #94a3b8;
+  --usp-chart-tooltip-bg: rgba(24, 24, 28, 0.96);
+  --usp-chart-tooltip-border: #33333d;
+  --usp-card-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: var(--usp-bg);
+  color: var(--usp-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--usp-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-viewport {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  position: relative;
+  background: radial-gradient(circle at top right, var(--usp-primary-soft), transparent 45%),
+              var(--usp-bg);
+}
+
+.auth-topbar {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 50;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  box-shadow: var(--usp-card-shadow);
+  border-radius: 12px;
+}
+
+.setup-card {
+  width: 100%;
+  max-width: 720px;
+  box-shadow: var(--usp-card-shadow);
+  border-radius: 12px;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, monospace;
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    margin-bottom: 14px;
+  }
+  .auth-viewport {
+    padding: 16px;
+    padding-top: 64px;
+  }
+}
+

@@ -1,0 +1,43 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+version = providers.gradleProperty('mod_version').orElse(property('mod_version').toString()).get()
+group = mod_group_id
+
+base {
+    archivesName = "${mod_id}-bridge-modern-jvm"
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 8
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    api project(':core')
+
+    compileOnly 'org.slf4j:slf4j-api:1.7.36'
+    compileOnly 'org.apache.logging.log4j:log4j-api:2.14.1'
+    compileOnly 'org.apache.logging.log4j:log4j-core:2.14.1'
+    compileOnly 'com.github.oshi:oshi-core:6.4.10'
+}
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            from components.java
+        }
+    }
+}
+

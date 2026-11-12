@@ -1,0 +1,31 @@
+ext.registerBuildConstantsTask = { Project targetProject, Map targetMeta, Map manifest, String modVersion, String loaderDisplay ->
+    def constantsDir = targetProject.layout.buildDirectory.dir('generated/sources/usp-constants/java')
+    def task = targetProject.tasks.register('generateBuildConstants') {
+        inputs.property('modId', manifest.modId as String)
+        inputs.property('modName', manifest.modName as String)
+        inputs.property('modVersion', modVersion)
+        inputs.property('mcVersion', targetMeta.mc as String)
+        inputs.property('loaderDisplay', loaderDisplay)
+        outputs.dir(constantsDir)
+        doLast {
+            def pkgDir = new File(constantsDir.get().asFile, 'com/utopiaxc/utopiaserverpanel/platform/shared')
+            pkgDir.mkdirs()
+            def out = new File(pkgDir, 'BuildConstants.java')
+            def esc = { String s -> s.replace('\\', '\\\\').replace('"', '\\"') }
+            out.setText("""package com.utopiaxc.utopiaserverpanel.platform.shared;
+
+public final class BuildConstants {
+    public static final String MOD_ID = "${esc(manifest.modId as String)}";
+    public static final String MOD_NAME = "${esc(manifest.modName as String)}";
+    public static final String MOD_VERSION = "${esc(modVersion)}";
+    public static final String MC_VERSION = "${esc(targetMeta.mc as String)}";
+    public static final String LOADER_DISPLAY_NAME = "${esc(loaderDisplay)}";
+
+    private BuildConstants() {}
+}
+""", 'UTF-8')
+        }
+    }
+    return [task: task, dir: constantsDir]
+}
+

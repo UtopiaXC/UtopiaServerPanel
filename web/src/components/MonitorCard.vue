@@ -1,246 +1,282 @@
 <template>
-  <div class="chart-card">
-    <div class="card-header">
-      <div class="card-title">{{ title }} <span v-if="timeOffsetWeeks > 0" class="offset-badge">(-{{ timeOffsetWeeks }}w)</span></div>
-      <div class="card-controls">
-        <button class="icon-btn" @click="shiftTimeBack" title="Load 1 week earlier">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/></svg>
-        </button>
-        <button class="icon-btn" @click="resetOrRefresh" :disabled="loading" title="Refresh">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
-        </button>
-        
-        <div class="time-range-btns">
-          <button :class="{ active: timeRange === '1day' }" @click="setTimeRange('1day')">{{ $t('logs.last1Day') || 'Last 1 Day' }}</button>
-          <button :class="{ active: timeRange === '1week' }" @click="setTimeRange('1week')">{{ $t('logs.last1Week') || 'Last 1 Week' }}</button>
-          <button :class="{ active: timeRange === 'custom' }" @click="setTimeRange('custom')">{{ $t('logs.custom') || 'Custom' }}</button>
+  <n-card size="small" style="border-radius: 12px;">
+    <template #header>
+      <div class="monitor-header">
+        <div class="monitor-title-wrap">
+          <span class="monitor-title">{{ title }}</span>
+          <n-tag v-if="timeOffsetWeeks > 0" size="tiny" type="warning" round>
+            -{{ timeOffsetWeeks }}w
+          </n-tag>
+        </div>
+
+        <div class="monitor-controls">
+          <n-button
+            size="tiny"
+            quaternary
+            :title="$t('logs.shiftBack')"
+            :disabled="loading"
+            @click="shiftTimeBack"
+          >
+            <template #icon>
+              <n-icon><ChevronBackOutline /></n-icon>
+            </template>
+          </n-button>
+          <n-button
+            size="tiny"
+            quaternary
+            :title="$t('common.refresh')"
+            :loading="loading"
+            @click="resetOrRefresh"
+          >
+            <template #icon>
+              <n-icon><RefreshOutline /></n-icon>
+            </template>
+          </n-button>
+          <n-button-group size="tiny">
+            <n-button
+              :type="timeRange === '1day' ? 'primary' : 'default'"
+              @click="setTimeRange('1day')"
+            >
+              {{ $t('logs.range1d') }}
+            </n-button>
+            <n-button
+              :type="timeRange === '1week' ? 'primary' : 'default'"
+              @click="setTimeRange('1week')"
+            >
+              {{ $t('logs.range1w') }}
+            </n-button>
+            <n-button
+              :type="timeRange === 'custom' ? 'primary' : 'default'"
+              @click="setTimeRange('custom')"
+            >
+              {{ $t('logs.rangeCustom') }}
+            </n-button>
+          </n-button-group>
         </div>
       </div>
+    </template>
+
+    <div v-if="timeRange === 'custom'" class="custom-range-bar">
+      <n-date-picker
+        v-model:value="customRange"
+        type="datetimerange"
+        size="small"
+        style="flex: 1; min-width: 220px;"
+      />
+      <n-button size="small" type="primary" :loading="loading" @click="fetchData">
+        {{ $t('common.confirm') }}
+      </n-button>
     </div>
-    
-    <div class="custom-time-row" v-if="timeRange === 'custom'">
-      <input type="datetime-local" v-model="customStart" />
-      <span> - </span>
-      <input type="datetime-local" v-model="customEnd" />
-      <button class="apply-btn" @click="fetchData">{{ $t('common.confirm') || 'OK' }}</button>
+
+    <div class="chart-box">
+      <n-spin :show="loading" style="height: 100%; width: 100%;">
+        <v-chart class="echart" :option="chartOption" autoresize />
+      </n-spin>
     </div>
-    
-    <div class="chart-container">
-      <div v-if="loading" class="loading-overlay">
-        <div class="spinner"></div>
-      </div>
-      <v-chart class="echart" :option="chartOption" autoresize />
-    </div>
-  </div>
+  </n-card>
 </template>
 
-<script setup>
-import { ref, onMounted, computed, watch, onUnmounted } from 'vue';
-import { useI18n } from 'vue-i18n';
-import VChart from 'vue-echarts';
-import { use } from 'echarts/core';
-import { LineChart } from 'echarts/charts';
-import { TooltipComponent, GridComponent, DataZoomComponent, LegendComponent, TitleComponent } from 'echarts/components';
-import { CanvasRenderer } from 'echarts/renderers';
-import { monitorAPI } from '../api/admin';
-import { on, off } from '../api';
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { LineChart } from 'echarts/charts'
+import {
+  TooltipComponent,
+  GridComponent,
+  DataZoomComponent,
+  LegendComponent
+} from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import { ChevronBackOutline, RefreshOutline } from '@vicons/ionicons5'
+import { monitorApi } from '../api/monitor'
+import { useWebSocket } from '../composables/useWebSocket'
+import { useThemeStore } from '../stores/theme'
+import { formatBytes } from '../utils/format'
 
-use([CanvasRenderer, LineChart, TooltipComponent, GridComponent, DataZoomComponent, LegendComponent, TitleComponent]);
+use([
+  CanvasRenderer,
+  LineChart,
+  TooltipComponent,
+  GridComponent,
+  DataZoomComponent,
+  LegendComponent
+])
 
-const props = defineProps({
-  title: String,
-  type: String, // 'cpu', 'memory', 'tps', 'disk', 'player'
-});
+const props = defineProps<{
+  title: string
+  type: 'cpu' | 'memory' | 'tps' | 'disk' | 'player'
+}>()
 
-const { t } = useI18n();
+const { t } = useI18n()
+const themeStore = useThemeStore()
+const { onMonitorLog, onPlayerEvent } = useWebSocket()
 
-const loading = ref(false);
-const timeRange = ref('1day'); // 1day, 1week, custom
-const timeOffsetWeeks = ref(0);
-const customStart = ref('');
-const customEnd = ref('');
-const logsData = ref([]);
-const playerEventsData = ref([]);
-const playerInitialCount = ref(0);
-const playerInitialPlayers = ref([]);
-const lifecycleData = ref([]);
+const loading = ref(false)
+const timeRange = ref<'1day' | '1week' | 'custom'>('1day')
+const timeOffsetWeeks = ref(0)
+const nowMs = Date.now()
+const customRange = ref<[number, number]>([nowMs - 86400 * 1000, nowMs])
 
-const showPlayerNames = ref(false);
+const logsData = ref<any[]>([])
+const playerEventsData = ref<any[]>([])
+const playerInitialPlayers = ref<string[]>([])
+const lifecycleData = ref<any[]>([])
+const showPlayerNames = ref(false)
 
-const setTimeRange = (range) => {
-  timeRange.value = range;
-  timeOffsetWeeks.value = 0; // reset offset when switching range
-  
+let unsubMonitor: (() => void) | null = null
+let unsubPlayer: (() => void) | null = null
+
+function getRangeTimestamps(): { start: number; end: number } {
+  if (timeRange.value === 'custom' && customRange.value) {
+    return {
+      start: Math.floor(customRange.value[0] / 1000),
+      end: Math.floor(customRange.value[1] / 1000)
+    }
+  }
+  const end = Math.floor(Date.now() / 1000)
+  const start = timeRange.value === '1day' ? end - 86400 : end - 7 * 86400
+  return { start, end }
+}
+
+function setTimeRange(range: '1day' | '1week' | 'custom') {
+  timeRange.value = range
+  timeOffsetWeeks.value = 0
   if (range === 'custom') {
-    const now = new Date();
-    const oneDayAgo = new Date(now.getTime() - 86400 * 1000);
-    // Format to YYYY-MM-DDThh:mm
-    const formatDt = (d) => {
-      const pad = (n) => String(n).padStart(2, '0');
-      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    };
-    customEnd.value = formatDt(now);
-    customStart.value = formatDt(oneDayAgo);
+    const end = Date.now()
+    customRange.value = [end - 86400 * 1000, end]
   } else {
-    fetchData();
+    fetchData()
   }
-};
+}
 
-const shiftTimeBack = async () => {
-  loading.value = true;
+async function fetchData() {
+  loading.value = true
   try {
-    // Current oldest timestamp in our data, or fallback to computed start
-    let currentOldest = Number.MAX_SAFE_INTEGER;
-    if (logsData.value.length > 0) currentOldest = Math.min(currentOldest, logsData.value[0].ts);
-    if (playerEventsData.value && playerEventsData.value.length > 0) currentOldest = Math.min(currentOldest, playerEventsData.value[0].ts);
-    
+    const { start, end } = getRangeTimestamps()
+    const cfg = await monitorApi.getDisplayConfig()
+    showPlayerNames.value = Boolean(cfg.showPlayerNames)
+
+    if (props.type === 'player') {
+      const [perfRes, evtRes, lcRes] = await Promise.all([
+        monitorApi.queryPerfLogs(start, end),
+        monitorApi.queryPlayerEvents(start, end),
+        monitorApi.queryLifecycleRange(start, end)
+      ])
+      logsData.value = perfRes.logs || []
+      playerInitialPlayers.value = evtRes.initialPlayers || []
+      playerEventsData.value = evtRes.events || []
+      lifecycleData.value = lcRes.events || []
+    } else {
+      const res = await monitorApi.queryPerfLogs(start, end)
+      logsData.value = res.logs || []
+    }
+  } catch {
+    // keep empty gracefully
+  } finally {
+    loading.value = false
+  }
+}
+
+async function shiftTimeBack() {
+  loading.value = true
+  try {
+    let currentOldest = Number.MAX_SAFE_INTEGER
+    if (logsData.value.length > 0) {
+      currentOldest = Math.min(currentOldest, logsData.value[0].ts)
+    }
+    if (playerEventsData.value.length > 0) {
+      currentOldest = Math.min(currentOldest, playerEventsData.value[0].ts)
+    }
     if (currentOldest === Number.MAX_SAFE_INTEGER) {
-      const { start } = getRangeTimestamps();
-      currentOldest = start;
+      currentOldest = getRangeTimestamps().start
     }
 
-    const end = currentOldest;
-    const start = end - 7 * 86400;
+    const end = currentOldest
+    const start = end - 7 * 86400
 
     if (props.type === 'player') {
       const [perfRes, evtRes, lcRes] = await Promise.all([
-        monitorAPI.queryPerfLogs(start, end),
-        monitorAPI.queryPlayerEvents(start, end),
-        monitorAPI.queryLifecycleRange(start, end)
-      ]);
-      const newLogs = perfRes.data.data.logs || [];
-      const newEvts = evtRes.data.data.events || [];
-      const newLc = lcRes.data.data.events || [];
-      // Replace initial state with the older range's initial state
-      playerInitialCount.value = evtRes.data.data.initialCount || 0;
-      playerInitialPlayers.value = evtRes.data.data.initialPlayers || [];
-      // Prepend data
-      logsData.value = [...newLogs, ...logsData.value];
-      playerEventsData.value = [...newEvts, ...playerEventsData.value];
-      lifecycleData.value = [...newLc, ...lifecycleData.value];
+        monitorApi.queryPerfLogs(start, end),
+        monitorApi.queryPlayerEvents(start, end),
+        monitorApi.queryLifecycleRange(start, end)
+      ])
+      playerInitialPlayers.value = evtRes.initialPlayers || []
+      logsData.value = [...(perfRes.logs || []), ...logsData.value]
+      playerEventsData.value = [...(evtRes.events || []), ...playerEventsData.value]
+      lifecycleData.value = [...(lcRes.events || []), ...lifecycleData.value]
     } else {
-      const res = await monitorAPI.queryPerfLogs(start, end);
-      const newLogs = res.data.data.logs || [];
-      logsData.value = [...newLogs, ...logsData.value];
+      const res = await monitorApi.queryPerfLogs(start, end)
+      logsData.value = [...(res.logs || []), ...logsData.value]
     }
-    
-    // We increase timeOffsetWeeks so real-time updates are paused if we are looking at history
-    timeOffsetWeeks.value++;
-  } catch (e) {
-    console.error("Failed to load older data for", props.type, e);
+    timeOffsetWeeks.value++
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
-const resetOrRefresh = () => {
-  timeOffsetWeeks.value = 0;
-  fetchData();
-};
+function resetOrRefresh() {
+  timeOffsetWeeks.value = 0
+  fetchData()
+}
 
-const getRangeTimestamps = () => {
-  if (timeRange.value === 'custom') {
-    const start = Math.floor(new Date(customStart.value).getTime() / 1000);
-    const end = Math.floor(new Date(customEnd.value).getTime() / 1000);
-    return { start, end };
-  }
-
-  const now = Math.floor(new Date().getTime() / 1000);
-  
-  let start, end;
-  if (timeRange.value === '1day') {
-    end = now;
-    start = end - 86400;
-  } else {
-    // 1week
-    end = now;
-    start = end - 7 * 86400;
-  }
-  return { start, end };
-};
-
-const fetchData = async () => {
-  loading.value = true;
-  try {
-    const { start, end } = getRangeTimestamps();
-    const configRes = await monitorAPI.getDisplayConfig();
-    showPlayerNames.value = configRes.data.data.showPlayerNames;
-
-    if (props.type === 'player') {
-      const [perfRes, evtRes, lcRes] = await Promise.all([
-        monitorAPI.queryPerfLogs(start, end),
-        monitorAPI.queryPlayerEvents(start, end),
-        monitorAPI.queryLifecycleRange(start, end)
-      ]);
-      logsData.value = perfRes.data.data.logs || [];
-      playerInitialCount.value = evtRes.data.data.initialCount || 0;
-      playerInitialPlayers.value = evtRes.data.data.initialPlayers || [];
-      playerEventsData.value = evtRes.data.data.events || [];
-      lifecycleData.value = lcRes.data.data.events || [];
-    } else {
-      const res = await monitorAPI.queryPerfLogs(start, end);
-      logsData.value = res.data.data.logs || [];
-    }
-  } catch (e) {
-    console.error("Failed to fetch monitor data for", props.type, e);
-  } finally {
-    loading.value = false;
-  }
-};
-
-const formatBytes = (bytes) => {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-};
+function formatAxisTs(ts: number): string {
+  const d = new Date(ts * 1000)
+  return `${d.getMonth() + 1}-${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(
+    d.getMinutes()
+  ).padStart(2, '0')}`
+}
 
 const chartOption = computed(() => {
-  const isBytes = props.type === 'memory' || props.type === 'disk';
-  
-  let series = [];
-  let xAxisData = [];
-  
-  const baseTooltip = {
+  const dark = themeStore.isDark
+  const axisColor = dark ? '#94a3b8' : '#64748b'
+  const gridColor = dark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(100, 116, 139, 0.16)'
+  const tooltipBg = dark ? 'rgba(24, 24, 28, 0.96)' : 'rgba(255, 255, 255, 0.96)'
+  const tooltipBorder = dark ? '#33333d' : '#e2e8f0'
+  const tooltipText = dark ? '#e5e7eb' : '#1f2937'
+
+  const isBytes = props.type === 'memory' || props.type === 'disk'
+  let series: any[] = []
+  let xAxisData: string[] = []
+
+  const tooltip: any = {
     trigger: 'axis',
-    valueFormatter: (value) => isBytes ? formatBytes(value) : value
-  };
+    backgroundColor: tooltipBg,
+    borderColor: tooltipBorder,
+    textStyle: { color: tooltipText, fontSize: 12 },
+    valueFormatter: (value: number) => (isBytes ? formatBytes(value) : value)
+  }
 
   if (props.type === 'cpu') {
-    xAxisData = logsData.value.map(l => {
-      const d = new Date(l.ts * 1000);
-      return `${d.getMonth()+1}-${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    });
-    series = [{
-      name: t('logs.cpuUsage'),
-      type: 'line',
-      data: logsData.value.map(l => l.cpu),
-      smooth: true,
-      symbol: 'none',
-      areaStyle: { opacity: 0.2 },
-      itemStyle: { color: '#3b82f6' }
-    }];
-  } 
-  else if (props.type === 'memory') {
-    xAxisData = logsData.value.map(l => {
-      const d = new Date(l.ts * 1000);
-      return `${d.getMonth()+1}-${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    });
+    xAxisData = logsData.value.map((l) => formatAxisTs(l.ts))
+    series = [
+      {
+        name: t('logs.metricCpu'),
+        type: 'line',
+        data: logsData.value.map((l) => Number((l.cpu ?? 0).toFixed(2))),
+        smooth: true,
+        symbol: 'none',
+        areaStyle: { opacity: 0.16 },
+        itemStyle: { color: '#3b82f6' }
+      }
+    ]
+  } else if (props.type === 'memory') {
+    xAxisData = logsData.value.map((l) => formatAxisTs(l.ts))
     series = [
       {
         name: t('logs.jvmUsed'),
         type: 'line',
-        data: logsData.value.map(l => l.memJvm),
+        data: logsData.value.map((l) => l.memJvm),
         smooth: true,
         symbol: 'none',
-        areaStyle: { opacity: 0.1 },
-        itemStyle: { color: '#10b981' }
+        areaStyle: { opacity: 0.14 },
+        itemStyle: { color: dark ? '#63e2b7' : '#18a058' }
       },
       {
         name: t('logs.sysUsed'),
         type: 'line',
-        data: logsData.value.map(l => l.memSysUsed),
+        data: logsData.value.map((l) => l.memSysUsed),
         smooth: true,
         symbol: 'none',
         itemStyle: { color: '#f59e0b' }
@@ -248,48 +284,42 @@ const chartOption = computed(() => {
       {
         name: t('logs.sysTotal'),
         type: 'line',
-        data: logsData.value.map(l => l.memSysTotal),
+        data: logsData.value.map((l) => l.memSysTotal),
         smooth: true,
         symbol: 'none',
         lineStyle: { type: 'dashed' },
         itemStyle: { color: '#9ca3af' }
       }
-    ];
-  }
-  else if (props.type === 'tps') {
-    xAxisData = logsData.value.map(l => {
-      const d = new Date(l.ts * 1000);
-      return `${d.getMonth()+1}-${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    });
-    series = [{
-      name: 'TPS',
-      type: 'line',
-      data: logsData.value.map(l => l.tps),
-      smooth: true,
-      symbol: 'none',
-      areaStyle: { opacity: 0.2 },
-      itemStyle: { color: '#22c55e' }
-    }];
-  }
-  else if (props.type === 'disk') {
-    xAxisData = logsData.value.map(l => {
-      const d = new Date(l.ts * 1000);
-      return `${d.getMonth()+1}-${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    });
+    ]
+  } else if (props.type === 'tps') {
+    xAxisData = logsData.value.map((l) => formatAxisTs(l.ts))
     series = [
       {
-        name: t('logs.gameFolderSize'),
+        name: t('logs.metricTps'),
         type: 'line',
-        data: logsData.value.map(l => l.gameFolder),
+        data: logsData.value.map((l) => Number((l.tps ?? 20).toFixed(2))),
         smooth: true,
         symbol: 'none',
-        areaStyle: { opacity: 0.1 },
+        areaStyle: { opacity: 0.18 },
+        itemStyle: { color: dark ? '#63e2b7' : '#18a058' }
+      }
+    ]
+  } else if (props.type === 'disk') {
+    xAxisData = logsData.value.map((l) => formatAxisTs(l.ts))
+    series = [
+      {
+        name: t('logs.gameFolder'),
+        type: 'line',
+        data: logsData.value.map((l) => l.gameFolder),
+        smooth: true,
+        symbol: 'none',
+        areaStyle: { opacity: 0.14 },
         itemStyle: { color: '#8b5cf6' }
       },
       {
         name: t('logs.diskUsed'),
         type: 'line',
-        data: logsData.value.map(l => l.diskUsed),
+        data: logsData.value.map((l) => l.diskUsed),
         smooth: true,
         symbol: 'none',
         itemStyle: { color: '#ef4444' }
@@ -297,402 +327,256 @@ const chartOption = computed(() => {
       {
         name: t('logs.diskTotal'),
         type: 'line',
-        data: logsData.value.map(l => l.diskTotal),
+        data: logsData.value.map((l) => l.diskTotal),
         smooth: true,
         symbol: 'none',
         lineStyle: { type: 'dashed' },
         itemStyle: { color: '#9ca3af' }
       }
-    ];
-  }
-  else if (props.type === 'player') {
-    // === Step 1: Replay player events to build state snapshots ===
+    ]
+  } else if (props.type === 'player') {
     const events = playerEventsData.value
-      .map(e => ({
+      .map((e) => ({
         ts: e.ts,
         isJoin: e.eventType === 1 || e.eventType === '1' || e.eventType === true,
-        name: e.playerName
+        name: e.playerName || t('logs.anonPlayer')
       }))
-      .sort((a, b) => a.ts - b.ts);
+      .sort((a, b) => a.ts - b.ts)
 
-    // State snapshots: sorted list of { ts, count, players }
-    const snapshots = [];
-    const onlineSet = new Set(playerInitialPlayers.value);
+    const snapshots: { ts: number; count: number; players: string[] }[] = []
+    const onlineSet = new Set<string>(playerInitialPlayers.value)
 
-    // Build snapshots from events
-    events.forEach(e => {
+    events.forEach((e) => {
       if (e.isJoin) {
-        onlineSet.add(e.name);
+        onlineSet.add(e.name)
       } else {
-        onlineSet.delete(e.name);
+        onlineSet.delete(e.name)
       }
-      snapshots.push({ ts: e.ts, count: onlineSet.size, players: Array.from(onlineSet) });
-    });
+      snapshots.push({ ts: e.ts, count: onlineSet.size, players: Array.from(onlineSet) })
+    })
 
-    // === Step 2: Build offline intervals from lifecycle data ===
-    // eventType: 0=start, 1=normal stop, 2=abnormal stop, 3=crash
     const lcEvents = (lifecycleData.value || [])
-      .map(e => ({ ts: e.ts, type: Number(e.eventType) }))
-      .sort((a, b) => a.ts - b.ts);
+      .map((e) => ({ ts: e.ts, type: Number(e.eventType) }))
+      .sort((a, b) => a.ts - b.ts)
 
-    const offlineIntervals = []; // [{start, end}]
+    const offlineIntervals: { start: number; end: number | null }[] = []
     for (let i = 0; i < lcEvents.length; i++) {
-      const lc = lcEvents[i];
-      // A stop event (1, 2, 3) marks start of offline period
+      const lc = lcEvents[i]
       if (lc.type === 1 || lc.type === 2 || lc.type === 3) {
-        const offStart = lc.ts;
-        // Find next start event
-        let offEnd = null;
+        let offEnd: number | null = null
         for (let j = i + 1; j < lcEvents.length; j++) {
           if (lcEvents[j].type === 0) {
-            offEnd = lcEvents[j].ts;
-            break;
+            offEnd = lcEvents[j].ts
+            break
           }
         }
-        // If no matching start found, server is still offline till end of range
-        offlineIntervals.push({ start: offStart, end: offEnd });
+        offlineIntervals.push({ start: lc.ts, end: offEnd })
       }
     }
 
-    const isOfflineAt = (ts) => {
-      for (const iv of offlineIntervals) {
-        if (ts >= iv.start && (iv.end === null || ts <= iv.end)) return true;
-      }
-      return false;
-    };
+    const isOfflineAt = (ts: number) =>
+      offlineIntervals.some((iv) => ts >= iv.start && (iv.end === null || ts <= iv.end))
 
-    // === Step 3: Find state at any timestamp via binary search ===
-    const getStateAt = (ts) => {
-      // Binary search: find last snapshot with snapshot.ts <= ts
-      let lo = 0, hi = snapshots.length - 1, result = -1;
+    const getStateAt = (ts: number) => {
+      let lo = 0
+      let hi = snapshots.length - 1
+      let result = -1
       while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
+        const mid = (lo + hi) >> 1
         if (snapshots[mid].ts <= ts) {
-          result = mid;
-          lo = mid + 1;
+          result = mid
+          lo = mid + 1
         } else {
-          hi = mid - 1;
+          hi = mid - 1
         }
       }
       if (result >= 0) {
-        return { count: snapshots[result].count, players: snapshots[result].players };
+        return { count: snapshots[result].count, players: snapshots[result].players }
       }
-      // Before any event: use initial state
-      return { count: playerInitialPlayers.value.length, players: Array.from(playerInitialPlayers.value) };
-    };
+      return {
+        count: playerInitialPlayers.value.length,
+        players: [...playerInitialPlayers.value]
+      }
+    }
 
-    // === Step 4: Build unified timeline from perf_logs timestamps + event timestamps ===
-    const toMinuteKey = (ts) => {
-      const d = new Date(ts * 1000);
-      return `${d.getMonth()+1}-${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    };
+    const buckets = new Map<
+      string,
+      { ts: number; count: number; players: string[]; offline: boolean }
+    >()
 
-    // Collect all unique timestamps (perf_logs + events)
-    const minuteBuckets = new Map(); // minuteKey -> { ts, count, players, offline }
-
-    // Add perf_log time points as skeleton
-    logsData.value.forEach(l => {
-      const key = toMinuteKey(l.ts);
-      if (!minuteBuckets.has(key)) {
-        const offline = isOfflineAt(l.ts);
+    logsData.value.forEach((l) => {
+      const key = formatAxisTs(l.ts)
+      if (!buckets.has(key)) {
+        const offline = isOfflineAt(l.ts)
         if (offline) {
-          minuteBuckets.set(key, { ts: l.ts, count: 0, players: [], offline: true });
+          buckets.set(key, { ts: l.ts, count: 0, players: [], offline: true })
         } else {
-          const state = getStateAt(l.ts);
-          minuteBuckets.set(key, { ts: l.ts, count: state.count, players: state.players, offline: false });
+          const st = getStateAt(l.ts)
+          buckets.set(key, { ts: l.ts, count: st.count, players: st.players, offline: false })
         }
       }
-    });
+    })
 
-    // Add/overwrite with event time points (these are exact)
-    snapshots.forEach(s => {
-      const key = toMinuteKey(s.ts);
-      const offline = isOfflineAt(s.ts);
-      minuteBuckets.set(key, {
+    snapshots.forEach((s) => {
+      const key = formatAxisTs(s.ts)
+      const offline = isOfflineAt(s.ts)
+      buckets.set(key, {
         ts: s.ts,
         count: offline ? 0 : s.count,
         players: offline ? [] : s.players,
         offline
-      });
-    });
+      })
+    })
 
-    // Sort by timestamp
-    const sortedEntries = Array.from(minuteBuckets.entries())
-      .sort((a, b) => a[1].ts - b[1].ts);
+    const sorted = Array.from(buckets.entries()).sort((a, b) => a[1].ts - b[1].ts)
+    xAxisData = sorted.map((e) => e[0])
 
-    xAxisData = sortedEntries.map(e => e[0]);
-    const dataPoints = sortedEntries.map(e => ({
-      val: e[1].count,
-      onlineList: e[1].players,
-      offline: e[1].offline
-    }));
+    series = [
+      {
+        name: t('logs.onlineCount'),
+        type: 'line',
+        step: 'end',
+        data: sorted.map((e) => ({
+          value: e[1].count,
+          onlineList: e[1].players,
+          offline: e[1].offline
+        })),
+        itemStyle: { color: '#6366f1' },
+        areaStyle: { opacity: 0.14 }
+      }
+    ]
 
-    series = [{
-      name: t('logs.onlineCount'),
-      type: 'line',
-      step: 'end',
-      data: dataPoints.map(p => ({
-        value: p.val,
-        onlineList: p.onlineList,
-        offline: p.offline
-      })),
-      itemStyle: { color: '#6366f1' },
-      areaStyle: { opacity: 0.1 }
-    }];
-
-    baseTooltip.formatter = (params) => {
-      let res = params[0].axisValue + '<br/>';
-      params.forEach(item => {
-        if (item.data.offline) {
-          res += `${item.marker} <span style="color:#ef4444;font-weight:bold;">${t('logs.serverOffline')}</span><br/>`;
+    tooltip.formatter = (params: any[]) => {
+      if (!params || !params.length) return ''
+      let html = `${params[0].axisValue}<br/>`
+      for (const item of params) {
+        if (item.data?.offline) {
+          html += `${item.marker} <span style="color:#ef4444;font-weight:600;">${t('logs.serverOffline')}</span><br/>`
         } else {
-          res += `${item.marker} ${item.seriesName}: <b>${item.data.value}</b><br/>`;
-          if (showPlayerNames.value && item.data.onlineList && item.data.onlineList.length > 0) {
-            res += `<span style="font-size:12px;color:#8b5cf6;word-break:break-all;white-space:normal;display:inline-block;max-width:200px;">[ ${item.data.onlineList.join(', ')} ]</span><br/>`;
+          html += `${item.marker} ${item.seriesName}: <b>${item.data?.value ?? 0}</b><br/>`
+          if (showPlayerNames.value && item.data?.onlineList?.length > 0) {
+            html += `<span style="font-size:11px;color:${axisColor};word-break:break-all;white-space:normal;display:inline-block;max-width:220px;">[ ${item.data.onlineList.join(', ')} ]</span><br/>`
           }
         }
-      });
-      return res;
-    };
+      }
+      return html
+    }
   }
 
   return {
-    tooltip: baseTooltip,
+    tooltip,
     legend: {
       top: 0,
-      right: 10,
+      right: 6,
       icon: 'circle',
-      textStyle: { color: '#6b7280' }
+      textStyle: { color: axisColor, fontSize: 12 }
     },
     grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '12%', 
-      top: '15%',
+      left: '2%',
+      right: '3%',
+      bottom: 42,
+      top: 34,
       containLabel: true
     },
     xAxis: {
       type: 'category',
       boundaryGap: false,
       data: xAxisData,
-      axisLine: { lineStyle: { color: '#e5e7eb' } },
-      axisLabel: { color: '#6b7280' }
+      axisLine: { lineStyle: { color: gridColor } },
+      axisLabel: { color: axisColor, fontSize: 11 }
     },
     yAxis: {
       type: 'value',
       axisLine: { show: false },
       axisTick: { show: false },
-      splitLine: { lineStyle: { color: '#f3f4f6' } },
+      splitLine: { lineStyle: { color: gridColor } },
       axisLabel: {
-        color: '#6b7280',
-        formatter: (value) => isBytes ? formatBytes(value) : value
+        color: axisColor,
+        fontSize: 11,
+        formatter: (value: number) => (isBytes ? formatBytes(value) : String(value))
       }
     },
     dataZoom: [
       {
         type: 'slider',
         show: true,
-        bottom: 5,
-        height: 20,
+        bottom: 4,
+        height: 18,
         start: 0,
         end: 100,
         borderColor: 'transparent',
-        fillerColor: 'rgba(59, 130, 246, 0.1)',
-        handleSize: '100%',
-        textStyle: { color: '#9ca3af' }
+        fillerColor: dark ? 'rgba(99, 226, 183, 0.14)' : 'rgba(24, 160, 88, 0.12)',
+        textStyle: { color: axisColor }
       },
-      {
-        type: 'inside',
-        start: 0,
-        end: 100
-      }
+      { type: 'inside', start: 0, end: 100 }
     ],
     series
-  };
-});
-
-const handleNewMonitorLog = (msg) => {
-  if (!msg.data) return;
-  if (timeRange.value === '1day' && timeOffsetWeeks.value === 0) {
-    logsData.value.push(msg.data);
   }
-};
-
-const handleNewPlayerEvent = (msg) => {
-  if (!msg.data || props.type !== 'player') return;
-  if (timeRange.value === '1day' && timeOffsetWeeks.value === 0) {
-    playerEventsData.value.push(msg.data);
-  }
-};
+})
 
 onMounted(() => {
-  fetchData();
-  on('new_monitor_log', handleNewMonitorLog);
-  on('new_player_event', handleNewPlayerEvent);
-});
+  fetchData()
+  unsubMonitor = onMonitorLog((log) => {
+    if (timeRange.value === '1day' && timeOffsetWeeks.value === 0) {
+      logsData.value.push(log)
+    }
+  })
+  unsubPlayer = onPlayerEvent((evt) => {
+    if (props.type === 'player' && timeRange.value === '1day' && timeOffsetWeeks.value === 0) {
+      playerEventsData.value.push(evt)
+    }
+  })
+})
 
 onUnmounted(() => {
-  off('new_monitor_log', handleNewMonitorLog);
-  off('new_player_event', handleNewPlayerEvent);
-});
-
+  unsubMonitor?.()
+  unsubPlayer?.()
+})
 </script>
 
 <style scoped>
-.chart-card {
-  background: var(--card-bg, #fff);
-  border-radius: 8px;
-  padding: 1rem;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  border: 1px solid var(--border-color, #e5e7eb);
+.monitor-header {
   display: flex;
-  flex-direction: column;
-  min-width: 0;
-  height: 380px;
-}
-
-.card-header {
-  display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  gap: 8px;
 }
 
-.card-title {
+.monitor-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.monitor-title {
+  font-size: 15px;
   font-weight: 600;
-  font-size: 1.1rem;
-  color: var(--text-primary, #111827);
 }
 
-.card-controls {
+.monitor-controls {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.icon-btn {
-  background: transparent;
-  border: 1px solid var(--border-color, #e5e7eb);
-  border-radius: 4px;
-  padding: 4px 8px;
-  cursor: pointer;
-  color: var(--text-secondary, #6b7280);
+.custom-range-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
-.icon-btn:hover:not(:disabled) {
-  background: var(--bg-color, #f3f4f6);
-  color: var(--primary-color, #3b82f6);
-}
-
-.icon-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.offset-badge {
-  font-size: 0.8rem;
-  color: #ef4444;
-  margin-left: 0.25rem;
-  font-weight: 500;
-}
-
-.custom-time-row {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.custom-time-row input[type="datetime-local"] {
-  border: 1px solid var(--border-color, #e5e7eb);
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-size: 0.85rem;
-  color: var(--text-primary);
-  background: var(--bg-color, #fff);
-}
-
-.apply-btn {
-  background: var(--primary-color, #3b82f6);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 4px 12px;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-.apply-btn:hover {
-  background: #2563eb;
-}
-
-.time-range-btns {
-  display: flex;
-  border: 1px solid var(--border-color, #e5e7eb);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.time-range-btns button {
-  background: transparent;
-  border: none;
-  border-right: 1px solid var(--border-color, #e5e7eb);
-  padding: 4px 12px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  color: var(--text-secondary, #6b7280);
-  transition: all 0.2s;
-}
-
-.time-range-btns button:last-child {
-  border-right: none;
-}
-
-.time-range-btns button:hover {
-  background: var(--bg-color, #f3f4f6);
-}
-
-.time-range-btns button.active {
-  background: var(--primary-color, #3b82f6);
-  color: white;
-}
-
-.chart-container {
-  flex: 1;
-  min-height: 0;
-  position: relative;
+.chart-box {
+  height: 300px;
   width: 100%;
-}
-
-.loading-overlay {
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(255, 255, 255, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-}
-
-.spinner {
-  width: 30px;
-  height: 30px;
-  border: 3px solid var(--border-color, #e5e7eb);
-  border-top-color: var(--primary-color, #3b82f6);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 
 .echart {
   width: 100%;
-  height: 100%;
+  height: 300px;
 }
 </style>
+

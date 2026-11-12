@@ -1,0 +1,93 @@
+ext.configureUspShadowRules = { shadowTask, Map targetMeta ->
+    boolean fullNetty = (targetMeta.fullShadedNetty == true)
+
+    shadowTask.mergeServiceFiles()
+
+    shadowTask.relocate 'org.mindrot.jbcrypt', 'com.utopiaxc.utopiaserverpanel.shaded.jbcrypt'
+    shadowTask.relocate 'org.apache.ibatis', 'com.utopiaxc.utopiaserverpanel.shaded.ibatis'
+
+    if (fullNetty) {
+        shadowTask.relocate 'io.netty', 'com.utopiaxc.utopiaserverpanel.shaded.netty'
+        // Prune unused Netty codecs, transports, and non-JDK SSL bindings while keeping
+        // full HTTP/1.x, WebSocket, and SslHandler (JDK SSL) runtime support.
+        shadowTask.exclude 'io/netty/handler/flow/**'
+        shadowTask.exclude 'io/netty/handler/ipfilter/**'
+        shadowTask.exclude 'io/netty/handler/logging/**'
+        shadowTask.exclude 'io/netty/handler/pcap/**'
+        shadowTask.exclude 'io/netty/handler/proxy/**'
+        shadowTask.exclude 'io/netty/handler/stream/**'
+        shadowTask.exclude 'io/netty/handler/timeout/**'
+        shadowTask.exclude 'io/netty/handler/traffic/**'
+        shadowTask.exclude 'io/netty/handler/address/**'
+        shadowTask.exclude 'io/netty/handler/flush/**'
+        shadowTask.exclude 'io/netty/handler/ssl/util/**'
+        shadowTask.exclude 'io/netty/handler/ssl/*OpenSsl*'
+        shadowTask.exclude 'io/netty/handler/ssl/*BouncyCastle*'
+        shadowTask.exclude 'io/netty/handler/ssl/*Conscrypt*'
+        shadowTask.exclude 'io/netty/handler/ssl/*Ocsp*'
+        shadowTask.exclude 'io/netty/handler/codec/compression/**'
+        shadowTask.exclude 'io/netty/handler/codec/serialization/**'
+        shadowTask.exclude 'io/netty/handler/codec/marshalling/**'
+        shadowTask.exclude 'io/netty/handler/codec/protobuf/**'
+        shadowTask.exclude 'io/netty/handler/codec/xml/**'
+        shadowTask.exclude 'io/netty/handler/codec/bytes/**'
+        shadowTask.exclude 'io/netty/handler/codec/string/**'
+        shadowTask.exclude 'io/netty/channel/oio/**'
+        shadowTask.exclude 'io/netty/channel/rxtx/**'
+        shadowTask.exclude 'io/netty/channel/sctp/**'
+        shadowTask.exclude 'io/netty/channel/udt/**'
+        shadowTask.exclude 'io/netty/channel/unix/**'
+        shadowTask.exclude 'io/netty/channel/local/**'
+        shadowTask.exclude 'io/netty/channel/embedded/**'
+        shadowTask.exclude 'META-INF/native/**'
+    } else {
+        shadowTask.relocate 'io.netty.handler.codec.http', 'com.utopiaxc.utopiaserverpanel.shaded.netty.http'
+    }
+
+    shadowTask.exclude 'io/netty/handler/codec/rtsp/**'
+    shadowTask.exclude 'io/netty/handler/codec/spdy/**'
+    shadowTask.exclude 'META-INF/io.netty.versions.properties'
+    shadowTask.exclude 'META-INF/maven/io.netty/**'
+    shadowTask.exclude 'META-INF/maven/org.mybatis/**'
+    shadowTask.exclude 'META-INF/maven/org.mindrot/**'
+    shadowTask.exclude 'META-INF/maven/ognl/**'
+    shadowTask.exclude 'META-INF/maven/org.javassist/**'
+    shadowTask.exclude 'META-INF/maven/org.slf4j/**'
+
+    // SQLite native architecture trimming for < 10 MB JAR budget
+    shadowTask.exclude 'org/sqlite/native/Linux-Android/**'
+    shadowTask.exclude 'org/sqlite/native/FreeBSD/**'
+    shadowTask.exclude 'org/sqlite/native/Linux/ppc64/**'
+    shadowTask.exclude 'org/sqlite/native/Linux/x86/**'
+    shadowTask.exclude 'org/sqlite/native/Linux/arm/**'
+    shadowTask.exclude 'org/sqlite/native/Linux/armv6/**'
+    shadowTask.exclude 'org/sqlite/native/Linux/armv7/**'
+    shadowTask.exclude 'org/sqlite/native/Linux-Musl/x86/**'
+    shadowTask.exclude 'org/sqlite/native/Windows/x86/**'
+    shadowTask.exclude 'org/sqlite/native/Windows/armv7/**'
+    if (fullNetty) {
+        // Legacy/1.16.5 builds embed full trimmed Netty + SLF4J; trim Windows ARM64 native
+        // (no Java 8 Windows ARM64 MC distribution) to guarantee < 10 MB with safe margin.
+        shadowTask.exclude 'org/sqlite/native/Windows/aarch64/**'
+    }
+
+    shadowTask.exclude 'META-INF/native-image/**'
+    shadowTask.exclude 'META-INF/versions/*/org/sqlite/nativeimage/**'
+    shadowTask.exclude 'META-INF/versions/*/module-info.class'
+    shadowTask.exclude 'META-INF/module-info.class'
+    shadowTask.exclude 'module-info.class'
+    shadowTask.exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
+}
+
+ext.enforceJarSizeLimit = { File jarFile, long maxBytes ->
+    if (!jarFile.exists()) {
+        throw new GradleException("Expected artifact does not exist: ${jarFile}")
+    }
+    long size = jarFile.length()
+    double mb = size / 1000000.0
+    logger.lifecycle("Built artifact ${jarFile.name}: ${size} bytes (${String.format(Locale.ROOT, '%.3f', mb)} MB)")
+    if (size >= maxBytes) {
+        throw new GradleException("Artifact ${jarFile.name} exceeds max size ${maxBytes} bytes (${size} bytes)")
+    }
+}
+

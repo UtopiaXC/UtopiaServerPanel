@@ -1,0 +1,24 @@
+pluginManagement {
+    repositories {
+        maven {
+            name = 'NeoForged'
+            url = 'https://maven.neoforged.net/releases'
+        }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'usp_platform_neoforge'
+
+includeBuild('../..') {
+    dependencySubstitution {
+        substitute module('com.utopiaxc.utopiaserverpanel:core') using project(':core')
+        substitute module('com.utopiaxc.utopiaserverpanel:bridge-modern-jvm') using project(':bridge:modern-jvm')
+    }
+}
+

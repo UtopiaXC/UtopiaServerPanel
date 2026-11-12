@@ -1,0 +1,111 @@
+plugins {
+    id 'java'
+    id 'com.gtnewhorizons.retrofuturagradle' version '2.0.6'
+    id 'com.gradleup.shadow' version '9.0.0-beta12'
+}
+
+def rootProps = new Properties()
+new File(rootProject.projectDir, '../../gradle.properties').withInputStream { rootProps.load(it) }
+def repoRoot = new File(rootProject.projectDir, '../..')
+
+apply from: new File(repoRoot, 'gradle/preprocess.gradle')
+apply from: new File(repoRoot, 'gradle/packaging.gradle')
+apply from: new File(repoRoot, 'gradle/constants.gradle')
+
+def loaded = loadVersionTarget(repoRoot, '1.7.10')
+def manifest = loaded.manifest
+def targetMeta = loaded.target
+def resolvedModVersion = providers.gradleProperty('mod_version').orElse(rootProps.getProperty('mod_version', '1.0.0')).get()
+def modId = manifest.modId as String
+
+group = manifest.modGroup as String
+version = resolvedModVersion
+
+base {
+    archivesName = "${manifest.artifactPrefix}-mc${targetMeta.mc}-forge"
+}
+
+def buildConst = registerBuildConstantsTask(project, targetMeta, manifest, resolvedModVersion, "Forge ${targetMeta.mc}")
+sourceSets.main.java.srcDir(buildConst.dir)
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(8)
+}
+
+minecraft {
+    mcVersion = '1.7.10'
+}
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    shade {
+        canBeConsumed = false
+        canBeResolved = true
+        exclude group: 'com.google.code.gson'
+        attributes {
+            attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category, Category.LIBRARY))
+            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
+            attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements, LibraryElements.JAR))
+        }
+    }
+}
+
+dependencies {
+    implementation 'com.utopiaxc.utopiaserverpanel:core'
+    shade 'com.utopiaxc.utopiaserverpanel:core'
+
+    // Legacy 1.7.10 bundles Netty 4.0.10 and has no SLF4J at runtime
+    shade('io.netty:netty-codec-http:4.1.97.Final') { transitive = false }
+    shade('io.netty:netty-codec:4.1.97.Final') { transitive = false }
+    shade('io.netty:netty-handler:4.1.97.Final') { transitive = false }
+    shade('io.netty:netty-transport:4.1.97.Final') { transitive = false }
+    shade('io.netty:netty-buffer:4.1.97.Final') { transitive = false }
+    shade('io.netty:netty-common:4.1.97.Final') { transitive = false }
+    shade('org.slf4j:slf4j-api:1.7.36') { transitive = false }
+    shade('org.slf4j:slf4j-nop:1.7.36') { transitive = false }
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    inputs.property('version', resolvedModVersion)
+    inputs.property('mcversion', targetMeta.mc)
+    filesMatching('mcmod.info') {
+        expand(
+                version: resolvedModVersion,
+                mcversion: targetMeta.mc,
+                mod_id: modId,
+                mod_name: manifest.modName
+        )
+    }
+}
+
+tasks.named('jar', Jar).configure {
+    archiveClassifier = 'thin'
+}
+
+tasks.named('compileJava').configure {
+    dependsOn buildConst.task
+}
+
+tasks.named('shadowJar').configure { shadow ->
+    dependsOn buildConst.task
+    shadow.configurations = [project.configurations.shade]
+    shadow.archiveClassifier = 'dev-shadow'
+    configureUspShadowRules(shadow, targetMeta)
+}
+
+tasks.named('reobfJar').configure { reobf ->
+    dependsOn tasks.named('shadowJar')
+    inputJar.set(tasks.named('shadowJar').flatMap { it.archiveFile })
+    archiveClassifier = ''
+    archiveFileName = "${manifest.artifactPrefix}-${resolvedModVersion}-mc${targetMeta.mc}-forge.jar"
+    doLast {
+        enforceJarSizeLimit(archiveFile.get().asFile, (manifest.maxJarBytes as Number).longValue())
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}

@@ -1,0 +1,82 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+version = providers.gradleProperty('mod_version').orElse(property('mod_version').toString()).get()
+group = mod_group_id
+
+base {
+    archivesName = "${mod_id}-core"
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 8
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compileOnly 'io.netty:netty-codec-http:4.1.97.Final'
+    compileOnly 'com.google.code.gson:gson:2.2.4'
+
+    api 'org.xerial:sqlite-jdbc:3.45.3.0'
+    api 'org.mindrot:jbcrypt:0.4'
+    api 'org.mybatis:mybatis:3.5.16'
+}
+
+def isWindows = System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows')
+def webDir = layout.projectDirectory.dir('../web')
+def webDistDir = layout.projectDirectory.dir('../web/dist')
+def generatedWebDir = layout.buildDirectory.dir('generated-web')
+
+def skipWeb = (providers.gradleProperty('skipWeb').orNull == 'true') && webDistDir.file('index.html').asFile.exists()
+
+def buildWeb = tasks.register('buildWeb', Exec) {
+    onlyIf { !skipWeb }
+    workingDir = webDir.asFile
+    inputs.file(webDir.file('package.json'))
+    inputs.file(webDir.file('package-lock.json'))
+    inputs.file(webDir.file('index.html'))
+    inputs.files(webDir.asFileTree.matching {
+        include 'vite.config.*'
+        include 'tsconfig*'
+        include 'src/**'
+        include 'public/**'
+    })
+    outputs.dir(webDistDir)
+    if (isWindows) {
+        commandLine 'cmd', '/c', 'npm install && npm run build'
+    } else {
+        commandLine 'sh', '-c', 'npm install && npm run build'
+    }
+}
+
+def syncWeb = tasks.register('syncWeb', Sync) {
+    if (!skipWeb) {
+        dependsOn buildWeb
+    }
+    into generatedWebDir
+    into('web') {
+        from webDistDir
+    }
+}
+
+sourceSets.main.resources.srcDir(syncWeb)
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            from components.java
+        }
+    }
+}
+
