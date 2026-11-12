@@ -129,6 +129,10 @@ public final class ModernGameAdapter implements GameAdapter {
         snap.setLevelSeed(rawSeed.isEmpty() ? String.valueOf(props.worldOptions.seed()) : rawSeed);
         snap.setLevelType(rawLevelType);
         snap.setGenerateStructures(props.worldOptions.generateStructures());
+        //?} else if mc >= 1.19 {
+        snap.setLevelSeed(rawSeed.isEmpty() ? String.valueOf(ds.getWorldData().worldGenSettings().seed()) : rawSeed);
+        snap.setLevelType(rawLevelType);
+        snap.setGenerateStructures(ds.getWorldData().worldGenSettings().generateStructures());
         //?} else {
         snap.setLevelSeed(rawSeed.isEmpty() ? String.valueOf(ds.getWorldData().worldGenSettings().seed()) : rawSeed);
         snap.setLevelType(rawLevelType);
