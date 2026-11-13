@@ -7,12 +7,10 @@ import com.utopiaxc.utopiaserverpanel.adapter.model.Position;
 import com.utopiaxc.utopiaserverpanel.adapter.model.ServerPropertiesSnapshot;
 import com.utopiaxc.utopiaserverpanel.adapter.model.ServerStatusSnapshot;
 import com.utopiaxc.utopiaserverpanel.adapter.util.CoreWorldDataReader;
-import com.utopiaxc.utopiaserverpanel.adapter.util.ServerPropertiesReader;
 import com.utopiaxc.utopiaserverpanel.spi.map.PlayerPositionSnapshot;
 import cpw.mods.fml.common.Loader;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.dedicated.DedicatedServer;
 import net.minecraft.stats.StatList;
 import net.minecraft.stats.StatisticsFile;
 import net.minecraft.world.WorldServer;
@@ -23,8 +21,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
-import java.util.Properties;
 import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -126,58 +122,10 @@ public final class Forge1710GameAdapter implements GameAdapter {
 
     @Override
     public ServerPropertiesSnapshot getServerProperties() {
-        if (!(server instanceof DedicatedServer)) {
+        if (!server.isDedicatedServer()) {
             return null;
         }
-        DedicatedServer ds = (DedicatedServer) server;
-        Properties raw = ServerPropertiesReader.loadRawServerProperties(getServerDirectory());
-        ServerPropertiesSnapshot snap = new ServerPropertiesSnapshot();
-
-        snap.setLevelSeed(raw.getProperty("level-seed", ""));
-        snap.setLevelType(raw.getProperty("level-type", "DEFAULT"));
-        snap.setGenerateStructures(Boolean.parseBoolean(raw.getProperty("generate-structures", "true")));
-        int viewDist = parseInt(raw.getProperty("view-distance", "10"), 10);
-        snap.setViewDistance(viewDist);
-        snap.setSimulationDistance(viewDist);
-        snap.setMaxBuildHeight(server.getBuildLimit());
-        snap.setMaxWorldSize(parseInt(raw.getProperty("max-world-size", "29999984"), 29999984));
-
-        snap.setGamemode(server.getGameType() != null ? server.getGameType().getName() : "survival");
-        snap.setDifficulty(server.func_147135_j() != null
-                ? server.func_147135_j().name().toLowerCase(Locale.ROOT)
-                : "normal");
-        snap.setHardcore(server.isHardcore());
-        snap.setPvp(server.isPVPEnabled());
-        snap.setAllowFlight(server.isFlightAllowed());
-        snap.setAllowNether(server.getAllowNether());
-        snap.setSpawnProtection(server.getSpawnProtectionSize());
-
-        snap.setOnlineMode(server.isServerInOnlineMode());
-        String ip = server.getServerHostname();
-        snap.setServerIp(ip == null || ip.isEmpty() ? "0.0.0.0" : ip);
-        snap.setServerPort(ds.getPort() > 0 ? ds.getPort() : parseInt(raw.getProperty("server-port", "25565"), 25565));
-        snap.setMaxTickTime(parseLong(raw.getProperty("max-tick-time", "60000"), 60000L));
-        snap.setWhiteList(Boolean.parseBoolean(raw.getProperty("white-list", "false")));
-        snap.setPlayerIdleTimeout(server.func_143007_ar());
-        snap.setMaxPlayers(server.getMaxPlayers());
-        snap.setWhitelistPlayers(ServerPropertiesReader.readWhitelistPlayers(getServerDirectory()));
-        return snap;
-    }
-
-    private static int parseInt(String val, int fallback) {
-        try {
-            return Integer.parseInt(val.trim());
-        } catch (Exception e) {
-            return fallback;
-        }
-    }
-
-    private static long parseLong(String val, long fallback) {
-        try {
-            return Long.parseLong(val.trim());
-        } catch (Exception e) {
-            return fallback;
-        }
+        return Forge1710DedicatedServerHelper.readProperties(server, getServerDirectory());
     }
 
     @Override
