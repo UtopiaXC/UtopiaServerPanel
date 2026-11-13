@@ -6,11 +6,20 @@
 
 Utopia Server Panel embeds a self-contained Web UI, real-time console, server monitor, and player-account binding service directly inside Minecraft, supporting Forge, NeoForge, and Fabric from 1.7.10 to 26.3.
 
-## Download
+## Live Demo
+[All The Mod 10 Running On My Server](https://mc-panel.utopiaxc.com/)
 
+## Download
+Choose the `.jar` matching your Minecraft version and mod loader from the release build matrix. Every build is a single standalone mod file with no external database or runtime dependencies required.
+
+### CurseForge
+Recommend. If it shows 404 or older version, maybe the newest one is under reviewing, you can have a wait or download at Github Release.  
+[CurseForge: Utopia Server Panel](https://www.curseforge.com/minecraft/mc-mods/utopia-server-panel)
+
+### Github Release
 [Latest Releases](https://github.com/UtopiaXC/UtopiaServerPanel/releases)
 
-Choose the `.jar` matching your Minecraft version and mod loader from the release build matrix. Every build is a single standalone mod file with no external database or runtime dependencies required.
+
 
 ## Supported Platforms
 
