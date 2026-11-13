@@ -7,11 +7,19 @@
 Utopia Server Panel 将 Web 管理后台、实时控制台、状态监控以及玩家账号绑定系统直接内置于 Minecraft 服务端中，支持从 `1.7.10` 到 `26.3` 的 Forge、NeoForge 与 Fabric。
 
 
-## 下载
+## 在线演示
+[在我的服务器上运行的一个All The Mod 10客户端](https://mc-panel.utopiaxc.com/)
 
-[前往 GitHub Releases 下载最新版本](https://github.com/UtopiaXC/UtopiaServerPanel/releases)
-
+## Download
 在对应版本的 Build Matrix 表格中直接点击适合你游戏版本与加载器的 `.jar` 即可下载。单文件开箱即用，无需额外安装数据库或外部运行库。
+
+### CurseForge
+推荐。如果显示404或只有更旧的版本，可能最新版本正在审查，如有需要请从Github Release下载。  
+[CurseForge: Utopia Server Panel](https://www.curseforge.com/minecraft/mc-mods/utopia-server-panel)  
+
+### Github Release
+[Latest Releases](https://github.com/UtopiaXC/UtopiaServerPanel/releases)  
+
 
 ## 兼容矩阵
 
