@@ -55,9 +55,9 @@ Utopia Server Panel 将 Web 管理后台、实时控制台、状态监控以及�
 
 | 初始化界面 | 面板首页 |
 | --- | --- |
-| ![initialization](assets/images/init.png) | ![dashboard](assets/images/dashboard.png) |  
+| ![initialization](../../images/init.png) | ![dashboard](../../images/dashboard.png) |  
 
 
 | 命令行 | 性能监控记录 |
 | --- | --- |
-| ![console](assets/images/console.png) | ![monitor](assets/images/monitor.png) |
+| ![console](../../images/console.png) | ![monitor](../../images/monitor.png) |
