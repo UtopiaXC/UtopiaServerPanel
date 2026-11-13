@@ -2,11 +2,10 @@
 
 > 适用于我的世界多版本、多加载器的轻量级 Web 服务器管理面板模组。
 
-**语言**：[English](../../README.md) | 简体中文
+**语言**：[English](../../../README.md) | 简体中文
 
 Utopia Server Panel 将 Web 管理后台、实时控制台、状态监控以及玩家账号绑定系统直接内置于 Minecraft 服务端中，支持从 `1.7.10` 到 `26.3` 的 Forge、NeoForge 与 Fabric。
 
-提示：本项目部分代码借助生成式 AI 辅助编写。
 
 ## 下载
 
@@ -50,13 +49,15 @@ Utopia Server Panel 将 Web 管理后台、实时控制台、状态监控以及�
 欢迎提交 AI 辅助编写的代码，但在提交 PR 前请务必经过人工审阅与测试。  
 请遵守社区规范提交 Issue 与 Pull Request。
 
-## 开源协议
-
-保留所有权利，详见 [LICENSE.txt](../../LICENSE.txt)。
 
 ## UI/UX Demo
 
-| 运行概览 | 实时控制台 |
-| --- | --- |
-| ![dashboard](../images/dashboard.png) | ![console](../images/console.png) |
 
+| 初始化界面 | 面板首页 |
+| --- | --- |
+| ![initialization](assets/images/init.png) | ![dashboard](assets/images/dashboard.png) |  
+
+
+| 命令行 | 性能监控记录 |
+| --- | --- |
+| ![console](assets/images/console.png) | ![monitor](assets/images/monitor.png) |

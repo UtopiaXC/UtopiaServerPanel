@@ -28,6 +28,21 @@ def load_versions(repo_root: Path) -> dict:
         return json.load(fh)
 
 
+def resolve_target_mc_versions(entry: dict, loader: str) -> List[str]:
+    """Return the ordered list of target Minecraft versions for a baseline + loader."""
+    if loader == "forge" and "curseforgeForgeVersions" in entry:
+        return list(entry["curseforgeForgeVersions"])
+    return list(entry.get("curseforgeVersions", [entry["mc"]]))
+
+
+def format_compatible_range(entry: dict, loader: str) -> str:
+    """Format a human-readable Minecraft compatibility range for CI and release notes."""
+    versions = resolve_target_mc_versions(entry, loader)
+    if len(versions) == 1:
+        return versions[0]
+    return f"{versions[0]} - {versions[-1]}"
+
+
 def emit_matrices(repo_root: Path, github_output: Optional[str] = None) -> None:
     manifest = load_versions(repo_root)
     legacy = []
@@ -47,7 +62,7 @@ def emit_matrices(repo_root: Path, github_output: Optional[str] = None) -> None:
                 "era": era,
                 "jdk": int(entry["jdk"]),
                 "gradle_jdk": int(entry.get("gradleJdk", entry["jdk"])),
-                "range": entry["fabricRange"] if loader == "fabric" else entry["minecraftRange"],
+                "range": format_compatible_range(entry, loader),
                 "project_dir": project_dir,
             }
             if era == "legacy":
@@ -175,7 +190,7 @@ def render_release_body(
         mc = entry["mc"]
         jdk = entry["jdk"]
         for loader in entry["loaders"]:
-            mc_range = entry["fabricRange"] if loader == "fabric" else entry["minecraftRange"]
+            mc_range = format_compatible_range(entry, loader)
             jar_name = f"{prefix}-{version}-mc{mc}-{loader}.jar"
             jar_path = found.get((mc, loader))
             if jar_path is not None and jar_path.is_file():
@@ -277,10 +292,7 @@ def resolve_curseforge_game_versions(
     entry: dict, loader: str, catalog: CurseForgeCatalog
 ) -> Tuple[List[int], List[str], Optional[str]]:
     """Resolve CurseForge gameVersions IDs for one baseline + loader target."""
-    if loader == "forge" and "curseforgeForgeVersions" in entry:
-        mc_names = list(entry["curseforgeForgeVersions"])
-    else:
-        mc_names = list(entry.get("curseforgeVersions", [entry["mc"]]))
+    mc_names = resolve_target_mc_versions(entry, loader)
 
     matched_mc_names = [name for name in mc_names if name in catalog.mc]
     if not matched_mc_names:

@@ -2,11 +2,9 @@
 
 > A lightweight, multi-version web management panel mod for Minecraft servers.
 
-**Language**: English | [简体中文](assets/docs/README.md)
+**Language**: English | [简体中文](assets/docs/README/README.md)
 
 Utopia Server Panel embeds a self-contained Web UI, real-time console, server monitor, and player-account binding service directly inside Minecraft, supporting Forge, NeoForge, and Fabric from 1.7.10 to 26.3.
-
-Notice: Part of this project is built with generative AI assistance.
 
 ## Download
 
@@ -50,12 +48,13 @@ Contributions are welcome.
 AI-assisted pull requests are accepted, provided all changes are reviewed and tested by hand before submission.  
 Please follow standard GitHub guidelines when opening issues or pull requests.
 
-## License
-
-All Rights Reserved. See [LICENSE.txt](LICENSE.txt) for details.
-
 ## UI/UX Demo
 
-| Dashboard | Console |
+| Initialization | Dashboard |
 | --- | --- |
-| ![dashboard](assets/images/dashboard.png) | ![console](assets/images/console.png) |
+| ![initialization](assets/images/init.png) | ![dashboard](assets/images/dashboard.png) |  
+
+
+| Console | Monitor |
+| --- | --- |
+| ![console](assets/images/console.png) | ![monitor](assets/images/monitor.png) |
