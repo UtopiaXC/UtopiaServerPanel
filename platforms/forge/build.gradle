@@ -174,12 +174,14 @@ dependencies {
 
 def mcTuple = parseMcTuple(targetMc)
 def depRequirementField = compareMcTuple(mcTuple, [1, 20, 6]) >= 0 ? 'type="required"' : 'mandatory=true'
+def forgeVersionRange = (targetMeta.forgeVersionRange ?: targetMeta.forgeLoaderRange ?: '[0,)') as String
 
 def generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
     def replaceProperties = [
-            minecraft_version_range: targetMeta.minecraftRange as String,
+            minecraft_version_range: (targetMeta.minecraftRange ?: '[0,)') as String,
             forge_version          : targetMeta.forgeVersionOnly as String,
-            loader_version_range   : targetMeta.forgeLoaderRange as String,
+            forge_version_range    : forgeVersionRange,
+            loader_version_range   : (targetMeta.forgeLoaderRange ?: '[0,)') as String,
             dep_requirement        : depRequirementField,
             mod_id                 : modId,
             mod_name               : manifest.modName as String,

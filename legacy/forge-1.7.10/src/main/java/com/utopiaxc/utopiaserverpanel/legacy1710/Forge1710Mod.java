@@ -22,7 +22,7 @@ import java.nio.file.Path;
         name = BuildConstants.MOD_NAME,
         version = BuildConstants.MOD_VERSION,
         acceptableRemoteVersions = "*",
-        acceptedMinecraftVersions = "[1.7.10]"
+        acceptedMinecraftVersions = "*"
 )
 public final class Forge1710Mod {
 

@@ -21,7 +21,7 @@ import java.nio.file.Path;
         name = BuildConstants.MOD_NAME,
         version = BuildConstants.MOD_VERSION,
         acceptableRemoteVersions = "*",
-        acceptedMinecraftVersions = "[1.12,1.12.2]"
+        acceptedMinecraftVersions = "*"
 )
 public final class Forge1122Mod {
 

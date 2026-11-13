@@ -5,6 +5,10 @@ ext.configureUspShadowRules = { shadowTask, Map targetMeta ->
 
     shadowTask.relocate 'org.mindrot.jbcrypt', 'com.utopiaxc.utopiaserverpanel.shaded.jbcrypt'
     shadowTask.relocate 'org.apache.ibatis', 'com.utopiaxc.utopiaserverpanel.shaded.ibatis'
+    if (targetMeta.bundleSlf4j == true) {
+        // Relocate bundled SLF4J so LaunchClassLoader's early negative cache on legacy Forge cannot block SQLite JDBC.
+        shadowTask.relocate 'org.slf4j', 'com.utopiaxc.utopiaserverpanel.shaded.slf4j'
+    }
 
     if (fullNetty) {
         shadowTask.relocate 'io.netty', 'com.utopiaxc.utopiaserverpanel.shaded.netty'

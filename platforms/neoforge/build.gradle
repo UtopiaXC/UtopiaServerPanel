@@ -117,12 +117,14 @@ dependencies {
 
 boolean useLegacyModsToml = compareMcTuple(mcTuple, [1, 20, 5]) < 0
 def metadataTemplateName = useLegacyModsToml ? 'META-INF/mods.toml' : 'META-INF/neoforge.mods.toml'
+def neoVersionRange = (targetMeta.neoforgeMinRange ?: '[0,)') as String
 
 def generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
     def replaceProperties = [
-            minecraft_version_range: targetMeta.minecraftRange as String,
+            minecraft_version_range: (targetMeta.minecraftRange ?: '[0,)') as String,
             neo_version            : targetMeta.neoforge as String,
-            loader_version_range   : targetMeta.neoforgeLoaderRange as String,
+            neo_version_range      : neoVersionRange,
+            loader_version_range   : (targetMeta.neoforgeLoaderRange ?: '[0,)') as String,
             mod_id                 : modId,
             mod_name               : manifest.modName as String,
             mod_license            : manifest.modLicense as String,

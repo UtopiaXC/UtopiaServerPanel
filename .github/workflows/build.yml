@@ -4,16 +4,54 @@ on:
   push:
     branches:
       - '**'
+    paths-ignore:
+      - 'README.md'
+      - 'assets/**'
+      - 'LICENSE.txt'
   pull_request:
+    paths-ignore:
+      - 'README.md'
+      - 'assets/**'
+      - 'LICENSE.txt'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  build-frontend:
+    name: Build Web Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install & Build Frontend
+        run: |
+          cd web
+          npm ci
+          npm run build
+
+      - name: Upload Frontend Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 1
+
   build-smoke:
     name: Smoke Build (${{ matrix.name }})
+    needs: build-frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -57,18 +95,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Download Frontend Bundle
+        uses: actions/download-artifact@v4
         with:
-          node-version: 22
-          cache: 'npm'
-          cache-dependency-path: web/package-lock.json
-
-      - name: Build Frontend
-        run: |
-          cd web
-          npm ci
-          npm run build
+          name: web-dist
+          path: web/dist
 
       - name: Setup Target Toolchain JDK (${{ matrix.jdk }})
         if: matrix.jdk != matrix.gradle_jdk

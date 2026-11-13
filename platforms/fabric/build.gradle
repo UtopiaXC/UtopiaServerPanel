@@ -120,6 +120,7 @@ dependencies {
 
 def mcTuple = parseMcTuple(targetMc)
 def fabricApiModId = compareMcTuple(mcTuple, [1, 18, 0]) < 0 ? 'fabric' : 'fabric-api'
+def fabricLoaderMin = (targetMeta.fabricLoaderMin ?: '*') as String
 
 tasks.named('processResources', ProcessResources).configure {
     def replaceProps = [
@@ -127,8 +128,8 @@ tasks.named('processResources', ProcessResources).configure {
             mod_name         : manifest.modName as String,
             mod_version      : resolvedModVersion,
             mod_license      : manifest.modLicense as String,
-            fabric_loader    : targetMeta.fabricLoader as String,
-            fabric_range     : targetMeta.fabricRange as String,
+            fabric_loader    : fabricLoaderMin,
+            fabric_range     : (targetMeta.fabricRange ?: '*') as String,
             java_version     : (targetMeta.jdk as int).toString(),
             fabric_api_modid : fabricApiModId,
     ]

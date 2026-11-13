@@ -6,6 +6,7 @@
   "description": "A panel for displaying and managing real-time server status in a browser.",
   "authors": ["UtopiaXC"],
   "license": "${mod_license}",
+  "icon": "assets/utopia_server_panel/icon.png",
   "environment": "*",
   "entrypoints": {
     "main": [
@@ -13,7 +14,7 @@
     ]
   },
   "depends": {
-    "fabricloader": ">=${fabric_loader}",
+    "fabricloader": "${fabric_loader}",
     "${fabric_api_modid}": "*",
     "minecraft": "${fabric_range}",
     "java": ">=${java_version}"
