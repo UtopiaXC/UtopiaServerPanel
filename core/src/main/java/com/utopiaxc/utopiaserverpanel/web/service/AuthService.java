@@ -8,7 +8,11 @@ import com.utopiaxc.utopiaserverpanel.web.db.MyBatisFactory;
 import com.utopiaxc.utopiaserverpanel.web.db.mapper.*;
 import com.utopiaxc.utopiaserverpanel.web.db.model.*;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -59,12 +63,14 @@ public final class AuthService {
         private final boolean mfaRequired;
         private final boolean setup2faRequired;
         private final String mfaToken;
+        private final List<String> available2faMethods;
         private final Long retryAfterSeconds;
         private final Map<String, Object> data;
 
         public LoginResult(boolean success, String errorCode, String message, int httpStatus,
                            boolean captchaRequired, boolean mfaRequired, boolean setup2faRequired,
-                           String mfaToken, Long retryAfterSeconds, Map<String, Object> data) {
+                           String mfaToken, List<String> available2faMethods,
+                           Long retryAfterSeconds, Map<String, Object> data) {
             this.success = success;
             this.errorCode = errorCode;
             this.message = message;
@@ -73,6 +79,7 @@ public final class AuthService {
             this.mfaRequired = mfaRequired;
             this.setup2faRequired = setup2faRequired;
             this.mfaToken = mfaToken;
+            this.available2faMethods = available2faMethods;
             this.retryAfterSeconds = retryAfterSeconds;
             this.data = data;
         }
@@ -85,20 +92,65 @@ public final class AuthService {
         public boolean mfaRequired() { return mfaRequired; }
         public boolean setup2faRequired() { return setup2faRequired; }
         public String mfaToken() { return mfaToken; }
+        public List<String> available2faMethods() { return available2faMethods; }
         public Long retryAfterSeconds() { return retryAfterSeconds; }
         public Map<String, Object> data() { return data; }
 
         public static LoginResult ok(Map<String, Object> data) {
-            return new LoginResult(true, null, "OK", 200, false, false, false, null, null, data);
+            return new LoginResult(true, null, "OK", 200, false, false, false, null, null, null, data);
         }
-        public static LoginResult challenge(boolean mfa, boolean setup2fa, String mfaToken) {
+        public static LoginResult challenge(boolean mfa, boolean setup2fa, String mfaToken, List<String> methods) {
             return new LoginResult(false, mfa ? "MFA_REQUIRED" : "SETUP_2FA_REQUIRED",
                     mfa ? "Two-factor verification required" : "Two-factor setup required",
-                    200, false, mfa, setup2fa, mfaToken, null, null);
+                    200, false, mfa, setup2fa, mfaToken, methods, null, null);
         }
         public static LoginResult error(int status, String code, String message, boolean captchaReq, Long retryAfter) {
-            return new LoginResult(false, code, message, status, captchaReq, false, false, null, retryAfter, null);
+            return new LoginResult(false, code, message, status, captchaReq, false, false, null, null, retryAfter, null);
         }
+    }
+
+    public static final class ValidatedMfaToken {
+        public final UserAccount user;
+        public final String purpose;
+        public final boolean rememberMe;
+
+        public ValidatedMfaToken(UserAccount user, String purpose, boolean rememberMe) {
+            this.user = user;
+            this.purpose = purpose;
+            this.rememberMe = rememberMe;
+        }
+    }
+
+    public static ValidatedMfaToken validateMfaToken(String mfaToken, String expectedPurpose) {
+        if (mfaToken == null || mfaToken.trim().isEmpty()) {
+            return null;
+        }
+        JwtClaims claims = JwtUtil.validateToken(mfaToken.trim());
+        if (claims == null) {
+            return null;
+        }
+        String purpose = JwtUtil.getPurpose(claims);
+        if (expectedPurpose != null && !expectedPurpose.equals(purpose)) {
+            return null;
+        }
+        int userId = JwtUtil.getUserId(claims);
+        int tokenVer = JwtUtil.getTokenVersion(claims);
+        boolean remember = JwtUtil.getRememberMe(claims);
+        UserAccount acc = MyBatisFactory.doWorkWithResult(session ->
+                session.getMapper(UserMapper.class).findById(userId));
+        if (acc == null || acc.getTokenVersion() != tokenVer || !"active".equals(acc.getStatus())) {
+            return null;
+        }
+        return new ValidatedMfaToken(acc, purpose, remember);
+    }
+
+    public static Map<String, Object> issueSessionForUser(int userId, boolean rememberMe, String ip, String userAgent) {
+        UserAccount user = MyBatisFactory.doWorkWithResult(session ->
+                session.getMapper(UserMapper.class).findById(userId));
+        if (user == null || !"active".equals(user.getStatus())) {
+            return null;
+        }
+        return issueSession(user, rememberMe, ip, userAgent);
     }
 
     public static LoginResult login(LoginRequest req, String ip, String userAgent) {
@@ -221,8 +273,8 @@ public final class AuthService {
         CaptchaService.clearFailures(ip, accountInput);
 
         // 2FA verification or forced 2FA onboarding
-        if (user.isTotpEnabled()) {
-            if (req.totpCode() != null && !req.totpCode().trim().isEmpty()) {
+        if (user.isTwoFactorEnabled()) {
+            if (req.totpCode() != null && !req.totpCode().trim().isEmpty() && user.isTotpEnabled()) {
                 UserTotp totp = MyBatisFactory.doWorkWithResult(session ->
                         session.getMapper(SecurityMapper.class).findTotpByUserId(user.getId()));
                 String secret = CryptoUtil.decrypt(totp.getSecretEncrypted());
@@ -231,12 +283,16 @@ public final class AuthService {
                     return LoginResult.error(401, "INVALID_TOTP", "Invalid verification code", false, null);
                 }
             } else {
+                List<String> methods = new ArrayList<>();
+                if (user.isTotpEnabled()) methods.add("totp");
+                if (user.getPasskeyCount() > 0) methods.add("passkey");
                 String mfaToken = JwtUtil.generateMfaToken(user.getId(), user.getTokenVersion(), "mfa", req.rememberMe());
-                return LoginResult.challenge(true, false, mfaToken);
+                return LoginResult.challenge(true, false, mfaToken, methods);
             }
         } else if (SettingsService.isForce2fa() || user.isRequire2fa()) {
+            List<String> setupMethods = Arrays.asList("totp", "passkey");
             String setupToken = JwtUtil.generateMfaToken(user.getId(), user.getTokenVersion(), "mfa_setup", req.rememberMe());
-            return LoginResult.challenge(false, true, setupToken);
+            return LoginResult.challenge(false, true, setupToken, setupMethods);
         }
 
         return LoginResult.ok(issueSession(user, req.rememberMe(), ip, userAgent));
@@ -398,8 +454,9 @@ public final class AuthService {
                 return new ActionResult(false, "CAPTCHA_REQUIRED", "Security verification failed", false);
             }
         }
-        if (req.username() == null || !req.username().trim().matches("^[a-zA-Z0-9_]{3,32}$")) {
-            return new ActionResult(false, "INVALID_USERNAME", "Username must be 3-32 alphanumeric or underscore characters", false);
+        UsernamePolicy.ValidationResult userCheck = UsernamePolicy.validate(req.username());
+        if (!userCheck.isValid()) {
+            return new ActionResult(false, userCheck.getErrorCode(), userCheck.getMessage(), false);
         }
         if (req.password() == null || req.password().length() < 6) {
             return new ActionResult(false, "WEAK_PASSWORD", "Password must be at least 6 characters", false);
@@ -471,7 +528,7 @@ public final class AuthService {
             userMapper.insert(acc);
 
             if (bindPlayerUuid != null) {
-                bindingMapper.insertBinding(acc.getId(), bindPlayerUuid, now);
+                bindingMapper.insertBinding(acc.getId(), bindPlayerUuid, 1, now);
                 bindingMapper.markCodeConsumed(codeInput, now);
             }
 
@@ -609,6 +666,7 @@ public final class AuthService {
             }
 
             secMapper.deleteTotpByUserId(rt.getUserId());
+            session.getMapper(PasskeyMapper.class).deleteByUserId(rt.getUserId());
             userMapper.bumpTokenVersion(rt.getUserId(), now);
             sessionMapper.deleteAllForUser(rt.getUserId());
             secMapper.markRecoveryTokenUsed(rt.getId(), now);
@@ -631,15 +689,31 @@ public final class AuthService {
         info.put("mustChangePassword", Boolean.valueOf(user.isMustChangePassword()));
         info.put("require2fa", Boolean.valueOf(user.isRequire2fa()));
         info.put("totpEnabled", Boolean.valueOf(user.isTotpEnabled()));
+        info.put("passkeyCount", Integer.valueOf(user.getPasskeyCount()));
+        info.put("twoFactorEnabled", Boolean.valueOf(user.isTwoFactorEnabled()));
         info.put("bound", Boolean.valueOf(user.isBound()));
         info.put("playerUuid", user.getPlayerUuid());
         info.put("playerName", user.getPlayerName());
         info.put("boundAt", user.getBoundAt());
+        List<PlayerBindingInfo> bindings = user.getBoundPlayers() != null
+                ? user.getBoundPlayers()
+                : BindingService.listByUserId(user.getId());
+        info.put("boundPlayers", bindings);
+        info.put("boundCount", Integer.valueOf(bindings.size()));
         info.put("locale", user.getLocale());
         info.put("createdAt", Long.valueOf(user.getCreatedAt()));
+
+        UserProfileInfo extra = ProfileService.getProfileExtras(user.getId());
+        info.put("avatarData", extra != null && extra.getAvatarData() != null ? extra.getAvatarData() : "");
+        info.put("gender", extra != null && extra.getGender() != null ? extra.getGender() : "unspecified");
+        info.put("birthday", extra != null && extra.getBirthday() != null ? extra.getBirthday() : "");
+        info.put("bio", extra != null && extra.getBio() != null ? extra.getBio() : "");
+        info.put("socialAccounts", ProfileService.parseSocialAccounts(extra != null ? extra.getSocialAccounts() : null));
+        info.put("privacy", ProfilePrivacyConfig.fromJson(extra != null ? extra.getPrivacyJson() : null).toMap());
+
         info.put("permissions", perms);
         info.put("needsBinding", Boolean.valueOf(isBindingRequiredFor(user, perms)));
-        info.put("needs2fa", Boolean.valueOf((SettingsService.isForce2fa() || user.isRequire2fa()) && !user.isTotpEnabled()));
+        info.put("needs2fa", Boolean.valueOf((SettingsService.isForce2fa() || user.isRequire2fa()) && !user.isTwoFactorEnabled()));
         return info;
     }
 

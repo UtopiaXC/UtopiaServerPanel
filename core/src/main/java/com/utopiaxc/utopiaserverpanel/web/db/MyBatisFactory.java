@@ -26,14 +26,22 @@ public final class MyBatisFactory {
 
     private MyBatisFactory() {}
 
-    public static void initialize(String configDirPath) {
+    public static void initialize(String dbOrConfigPath) {
+        java.nio.file.Path p = Paths.get(dbOrConfigPath);
+        if (!dbOrConfigPath.endsWith(".db")) {
+            p = p.resolve("utopia_server_panel.db");
+        }
+        initialize(p);
+    }
+
+    public static void initialize(java.nio.file.Path dbFilePath) {
         try {
             Class.forName("org.sqlite.JDBC");
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException("SQLite JDBC driver not found", e);
         }
 
-        String dbFile = Paths.get(configDirPath, "utopia_server_panel.db").toString().replace("\\", "/");
+        String dbFile = dbFilePath.toAbsolutePath().normalize().toString().replace("\\", "/");
         String dbUrl = "jdbc:sqlite:" + dbFile;
 
         Properties driverProps = new Properties();
@@ -77,12 +85,17 @@ public final class MyBatisFactory {
         configuration.addMapper(PermissionMapper.class);
         configuration.addMapper(RoleMapper.class);
         configuration.addMapper(UserMapper.class);
+        configuration.addMapper(UserProfileMapper.class);
         configuration.addMapper(PlayerBindingMapper.class);
         configuration.addMapper(SessionMapper.class);
         configuration.addMapper(ApiTokenMapper.class);
         configuration.addMapper(SecurityMapper.class);
+        configuration.addMapper(PasskeyMapper.class);
         configuration.addMapper(SettingsMapper.class);
         configuration.addMapper(MonitorMapper.class);
+        configuration.addMapper(MapWaypointMapper.class);
+        configuration.addMapper(WhitelistMapper.class);
+        configuration.addMapper(MessageMapper.class);
     }
 
     public static boolean isInitialized() {

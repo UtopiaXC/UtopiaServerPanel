@@ -40,6 +40,9 @@ public interface PermissionMapper {
             "ON CONFLICT(role_id, perm_key) DO UPDATE SET level = excluded.level")
     int setRolePermissionLevel(@Param("roleId") int roleId, @Param("permKey") String permKey, @Param("level") int level);
 
+    @Insert("INSERT OR IGNORE INTO role_permissions (role_id, perm_key, level) VALUES (#{roleId}, #{permKey}, #{level})")
+    int setRolePermissionIfMissing(@Param("roleId") int roleId, @Param("permKey") String permKey, @Param("level") int level);
+
     @Delete("DELETE FROM role_permissions WHERE role_id = #{roleId}")
     int deleteByRoleId(@Param("roleId") int roleId);
 }

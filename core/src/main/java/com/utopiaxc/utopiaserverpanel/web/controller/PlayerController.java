@@ -24,7 +24,8 @@ public final class PlayerController {
             return;
         }
 
-        JsonObject playerData = PlayerService.getPlayerDataForUser(userId);
+        String requestedUuid = ctx.queryParam("playerUuid");
+        JsonObject playerData = PlayerService.getPlayerDataForUser(userId, requestedUuid);
         if (playerData == null) {
             JsonObject result = new JsonObject();
             result.addProperty("bound", false);

@@ -208,6 +208,7 @@ import FieldHelp from '../components/FieldHelp.vue'
 import { setupApi } from '../api/setup'
 import { getApiErrorMessage } from '../api/client'
 import { useSiteStore } from '../stores/site'
+import { validateUsernameErrorKey } from '../utils/username'
 
 const router = useRouter()
 const message = useMessage()
@@ -292,6 +293,11 @@ async function handleTestSmtp() {
 }
 
 async function handleComplete() {
+  const userErrKey = validateUsernameErrorKey(form.adminUsername)
+  if (userErrKey) {
+    message.warning(t(`errors.${userErrKey}`))
+    return
+  }
   if (form.adminPassword !== form.confirmPassword) {
     message.warning(t('setup.passwordMismatch'))
     return

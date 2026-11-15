@@ -25,13 +25,14 @@ import java.util.List;
  * Drops legacy pre-refactor tables automatically if an incompatible legacy DB is detected.
  */
 public final class Schema {
-    private static final int SCHEMA_VERSION = 100;
+    private static final int SCHEMA_VERSION = 121;
 
     private Schema() {}
 
     public static void initialize() {
         try (Connection conn = MyBatisFactory.getRawConnection()) {
             rebuildIfLegacySchema(conn);
+            migratePlayerBindingsToMulti(conn);
             createTables(conn);
         } catch (SQLException e) {
             throw new IllegalStateException("Failed to initialize database schema", e);
@@ -74,6 +75,45 @@ public final class Schema {
                 return rs.next();
             }
         }
+    }
+
+    private static boolean columnExists(Connection conn, String table, String column) throws SQLException {
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("PRAGMA table_info(" + table + ")")) {
+            while (rs.next()) {
+                if (column.equalsIgnoreCase(rs.getString("name"))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    private static void migratePlayerBindingsToMulti(Connection conn) throws SQLException {
+        if (!tableExists(conn, "player_bindings") || columnExists(conn, "player_bindings", "is_primary")) {
+            return;
+        }
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("PRAGMA foreign_keys=OFF");
+            stmt.execute(
+                    "CREATE TABLE player_bindings_new ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    + "user_id INTEGER NOT NULL,"
+                    + "player_uuid TEXT UNIQUE NOT NULL,"
+                    + "is_primary INTEGER NOT NULL DEFAULT 0,"
+                    + "bound_at INTEGER NOT NULL,"
+                    + "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,"
+                    + "FOREIGN KEY (player_uuid) REFERENCES mc_players(player_uuid)"
+                    + ")");
+            stmt.execute(
+                    "INSERT INTO player_bindings_new (id, user_id, player_uuid, is_primary, bound_at) "
+                    + "SELECT id, user_id, player_uuid, 1, bound_at FROM player_bindings");
+            stmt.execute("DROP TABLE player_bindings");
+            stmt.execute("ALTER TABLE player_bindings_new RENAME TO player_bindings");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_player_bindings_user ON player_bindings(user_id, is_primary DESC, bound_at ASC)");
+            stmt.execute("PRAGMA foreign_keys=ON");
+        }
+        PanelLog.get().info("Migrated player_bindings table to multi-player schema");
     }
 
     private static void createTables(Connection conn) throws SQLException {
@@ -140,16 +180,32 @@ public final class Schema {
                     + "FOREIGN KEY (role_id) REFERENCES roles(id)"
                     + ")");
 
-            // Player <-> User bindings (1:1)
+            // Extended user panel profile & public page privacy settings (1:1 optional extension)
+            stmt.execute(
+                    "CREATE TABLE IF NOT EXISTS user_profiles ("
+                    + "user_id INTEGER PRIMARY KEY,"
+                    + "avatar_data TEXT NOT NULL DEFAULT '',"
+                    + "gender TEXT NOT NULL DEFAULT 'unspecified',"
+                    + "birthday TEXT NOT NULL DEFAULT '',"
+                    + "bio TEXT NOT NULL DEFAULT '',"
+                    + "social_accounts TEXT NOT NULL DEFAULT '[]',"
+                    + "privacy_json TEXT NOT NULL DEFAULT '{}',"
+                    + "updated_at INTEGER NOT NULL DEFAULT 0,"
+                    + "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+                    + ")");
+
+            // Player <-> User bindings (1:N; one panel user may bind multiple MC players)
             stmt.execute(
                     "CREATE TABLE IF NOT EXISTS player_bindings ("
                     + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                    + "user_id INTEGER UNIQUE NOT NULL,"
+                    + "user_id INTEGER NOT NULL,"
                     + "player_uuid TEXT UNIQUE NOT NULL,"
+                    + "is_primary INTEGER NOT NULL DEFAULT 0,"
                     + "bound_at INTEGER NOT NULL,"
                     + "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,"
                     + "FOREIGN KEY (player_uuid) REFERENCES mc_players(player_uuid)"
                     + ")");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_player_bindings_user ON player_bindings(user_id, is_primary DESC, bound_at ASC)");
 
             // One-time binding codes
             stmt.execute(
@@ -173,6 +229,23 @@ public final class Schema {
                     + "updated_at INTEGER NOT NULL,"
                     + "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
                     + ")");
+
+            // WebAuthn Passkeys (1:N per user)
+            stmt.execute(
+                    "CREATE TABLE IF NOT EXISTS user_passkeys ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    + "user_id INTEGER NOT NULL,"
+                    + "credential_id TEXT UNIQUE NOT NULL,"
+                    + "name TEXT NOT NULL,"
+                    + "public_key_cose TEXT NOT NULL,"
+                    + "algorithm INTEGER NOT NULL,"
+                    + "sign_count INTEGER NOT NULL DEFAULT 0,"
+                    + "transports TEXT NOT NULL DEFAULT '[]',"
+                    + "created_at INTEGER NOT NULL,"
+                    + "last_used_at INTEGER,"
+                    + "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+                    + ")");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_user_passkeys_user ON user_passkeys(user_id)");
 
             // Recovery & Activation tokens
             stmt.execute(
@@ -281,6 +354,86 @@ public final class Schema {
                     + "detail TEXT NOT NULL DEFAULT ''"
                     + ")");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_server_lifecycle_ts ON server_lifecycle(ts)");
+
+            // Map waypoints
+            stmt.execute(
+                    "CREATE TABLE IF NOT EXISTS map_waypoints ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    + "dimension TEXT NOT NULL,"
+                    + "name TEXT NOT NULL,"
+                    + "x INTEGER NOT NULL,"
+                    + "y INTEGER NOT NULL,"
+                    + "z INTEGER NOT NULL,"
+                    + "color TEXT NOT NULL DEFAULT '#38bdf8',"
+                    + "icon TEXT NOT NULL DEFAULT 'pin',"
+                    + "owner_user_id INTEGER,"
+                    + "is_global INTEGER NOT NULL DEFAULT 1,"
+                    + "created_at INTEGER NOT NULL,"
+                    + "FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE SET NULL"
+                    + ")");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_map_waypoints_dim ON map_waypoints(dimension)");
+
+            // Whitelist applications
+            stmt.execute(
+                    "CREATE TABLE IF NOT EXISTS whitelist_applications ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    + "username TEXT NOT NULL,"
+                    + "online_uuid TEXT NOT NULL DEFAULT '',"
+                    + "offline_uuid TEXT NOT NULL DEFAULT '',"
+                    + "preferred_uuid_mode TEXT NOT NULL DEFAULT 'auto',"
+                    + "email TEXT NOT NULL,"
+                    + "reason TEXT NOT NULL,"
+                    + "social_account TEXT NOT NULL DEFAULT '',"
+                    + "status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),"
+                    + "applicant_user_id INTEGER,"
+                    + "bind_on_approve INTEGER NOT NULL DEFAULT 0,"
+                    + "submit_ip TEXT NOT NULL DEFAULT '',"
+                    + "reviewer_user_id INTEGER,"
+                    + "review_note TEXT NOT NULL DEFAULT '',"
+                    + "created_at INTEGER NOT NULL,"
+                    + "reviewed_at INTEGER,"
+                    + "FOREIGN KEY (applicant_user_id) REFERENCES users(id) ON DELETE SET NULL,"
+                    + "FOREIGN KEY (reviewer_user_id) REFERENCES users(id) ON DELETE SET NULL"
+                    + ")");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_whitelist_apps_status ON whitelist_applications(status, created_at)");
+
+            // In-site inbox messages & notifications
+            stmt.execute(
+                    "CREATE TABLE IF NOT EXISTS in_site_messages ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    + "msg_type TEXT NOT NULL DEFAULT 'direct',"
+                    + "sender_user_id INTEGER,"
+                    + "sender_name TEXT NOT NULL DEFAULT '',"
+                    + "sender_uuid TEXT NOT NULL DEFAULT '',"
+                    + "recipient_user_id INTEGER,"
+                    + "recipient_player_uuid TEXT NOT NULL DEFAULT '',"
+                    + "recipient_name TEXT NOT NULL DEFAULT '',"
+                    + "title TEXT NOT NULL DEFAULT '',"
+                    + "content TEXT NOT NULL,"
+                    + "related_type TEXT NOT NULL DEFAULT '',"
+                    + "related_id TEXT NOT NULL DEFAULT '',"
+                    + "is_read INTEGER NOT NULL DEFAULT 0,"
+                    + "delivered_ingame INTEGER NOT NULL DEFAULT 0,"
+                    + "created_at INTEGER NOT NULL,"
+                    + "FOREIGN KEY (recipient_user_id) REFERENCES users(id) ON DELETE CASCADE"
+                    + ")");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_messages_recipient ON in_site_messages(recipient_user_id, is_read, created_at)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_messages_player ON in_site_messages(recipient_player_uuid, delivered_ingame, created_at)");
+
+            // Synced in-game public chat & whispers
+            stmt.execute(
+                    "CREATE TABLE IF NOT EXISTS ingame_chat_logs ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    + "channel TEXT NOT NULL DEFAULT 'public',"
+                    + "sender_uuid TEXT NOT NULL DEFAULT '',"
+                    + "sender_name TEXT NOT NULL,"
+                    + "recipient_uuid TEXT NOT NULL DEFAULT '',"
+                    + "recipient_name TEXT NOT NULL DEFAULT '',"
+                    + "source TEXT NOT NULL DEFAULT 'game',"
+                    + "content TEXT NOT NULL,"
+                    + "created_at INTEGER NOT NULL"
+                    + ")");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_ingame_chat_channel_ts ON ingame_chat_logs(channel, created_at)");
         }
     }
 
@@ -290,7 +443,12 @@ public final class Schema {
                 perm("admin", "system", 10),
                 perm("dashboard", "monitor", 20),
                 perm("terminal", "server", 30),
-                perm("logs", "monitor", 40)
+                perm("logs", "monitor", 40),
+                perm("map", "world", 50),
+                perm("profiler", "monitor", 60),
+                perm("mods_config", "server", 70),
+                perm("whitelist_apply", "whitelist", 80),
+                perm("whitelist_manage", "whitelist", 90)
         );
         for (PermissionDef def : defaults) {
             permMapper.upsertDefinition(def);
@@ -327,7 +485,6 @@ public final class Schema {
         }
 
         // 2: Guest (system, controls unauthenticated visitor visibility)
-        boolean guestExisted = roleMapper.findById(2) != null;
         RoleInfo guest = new RoleInfo();
         guest.setId(2);
         guest.setName("guest");
@@ -338,15 +495,17 @@ public final class Schema {
         guest.setCreatedAt(now);
         guest.setUpdatedAt(now);
         roleMapper.insertSeed(guest);
-        if (!guestExisted) {
-            permMapper.setRolePermissionLevel(2, "dashboard", PermissionLevel.READONLY.getLevel());
-            permMapper.setRolePermissionLevel(2, "terminal", PermissionLevel.DENY.getLevel());
-            permMapper.setRolePermissionLevel(2, "logs", PermissionLevel.DENY.getLevel());
-            permMapper.setRolePermissionLevel(2, "admin", PermissionLevel.DENY.getLevel());
-        }
+        permMapper.setRolePermissionIfMissing(2, "dashboard", PermissionLevel.READONLY.getLevel());
+        permMapper.setRolePermissionIfMissing(2, "terminal", PermissionLevel.DENY.getLevel());
+        permMapper.setRolePermissionIfMissing(2, "logs", PermissionLevel.DENY.getLevel());
+        permMapper.setRolePermissionIfMissing(2, "admin", PermissionLevel.DENY.getLevel());
+        permMapper.setRolePermissionIfMissing(2, "map", PermissionLevel.READONLY.getLevel());
+        permMapper.setRolePermissionIfMissing(2, "profiler", PermissionLevel.DENY.getLevel());
+        permMapper.setRolePermissionIfMissing(2, "mods_config", PermissionLevel.DENY.getLevel());
+        permMapper.setRolePermissionIfMissing(2, "whitelist_apply", PermissionLevel.FULL.getLevel());
+        permMapper.setRolePermissionIfMissing(2, "whitelist_manage", PermissionLevel.DENY.getLevel());
 
         // 3: Member/User (default registered account role)
-        boolean userExisted = roleMapper.findById(3) != null;
         RoleInfo member = new RoleInfo();
         member.setId(3);
         member.setName("user");
@@ -357,12 +516,15 @@ public final class Schema {
         member.setCreatedAt(now);
         member.setUpdatedAt(now);
         roleMapper.insertSeed(member);
-        if (!userExisted) {
-            permMapper.setRolePermissionLevel(3, "dashboard", PermissionLevel.READONLY.getLevel());
-            permMapper.setRolePermissionLevel(3, "terminal", PermissionLevel.DENY.getLevel());
-            permMapper.setRolePermissionLevel(3, "logs", PermissionLevel.READONLY.getLevel());
-            permMapper.setRolePermissionLevel(3, "admin", PermissionLevel.DENY.getLevel());
-        }
+        permMapper.setRolePermissionIfMissing(3, "dashboard", PermissionLevel.READONLY.getLevel());
+        permMapper.setRolePermissionIfMissing(3, "terminal", PermissionLevel.DENY.getLevel());
+        permMapper.setRolePermissionIfMissing(3, "logs", PermissionLevel.READONLY.getLevel());
+        permMapper.setRolePermissionIfMissing(3, "admin", PermissionLevel.DENY.getLevel());
+        permMapper.setRolePermissionIfMissing(3, "map", PermissionLevel.READONLY.getLevel());
+        permMapper.setRolePermissionIfMissing(3, "profiler", PermissionLevel.DENY.getLevel());
+        permMapper.setRolePermissionIfMissing(3, "mods_config", PermissionLevel.DENY.getLevel());
+        permMapper.setRolePermissionIfMissing(3, "whitelist_apply", PermissionLevel.FULL.getLevel());
+        permMapper.setRolePermissionIfMissing(3, "whitelist_manage", PermissionLevel.DENY.getLevel());
     }
 
     private static void seedDefaultSettings(SqlSession session) {
@@ -379,6 +541,8 @@ public final class Schema {
         setIfMissing(settingsMapper, "site_description", "Minecraft Server Management Panel", now);
         setIfMissing(settingsMapper, "base_url", "", now);
         setIfMissing(settingsMapper, "default_locale", "zh-CN", now);
+        setIfMissing(settingsMapper, "site_favicon", "", now);
+        setIfMissing(settingsMapper, "site_favicon_version", "default", now);
 
         // Registration & player binding
         setIfMissing(settingsMapper, "allow_registration", "true", now);
@@ -410,6 +574,43 @@ public final class Schema {
         setIfMissing(settingsMapper, "monitor_interval", "60", now);
         setIfMissing(settingsMapper, "monitor_retention_days", "30", now);
         setIfMissing(settingsMapper, "monitor_show_player_names", "true", now);
+
+        // Web Map
+        setIfMissing(settingsMapper, "map_enabled", "true", now);
+        setIfMissing(settingsMapper, "map_render_mode", "hybrid", now);
+        setIfMissing(settingsMapper, "map_max_chunks_per_tick", "2", now);
+        setIfMissing(settingsMapper, "map_cache_max_mb", "512", now);
+        setIfMissing(settingsMapper, "map_vis_terrain", "readonly", now);
+        setIfMissing(settingsMapper, "map_vis_nether_ceiling", "readonly", now);
+        setIfMissing(settingsMapper, "map_vis_grid", "readonly", now);
+        setIfMissing(settingsMapper, "map_vis_coordinates", "readonly", now);
+        setIfMissing(settingsMapper, "map_vis_water_depth", "readonly", now);
+        setIfMissing(settingsMapper, "map_vis_height_shading", "readonly", now);
+        setIfMissing(settingsMapper, "map_vis_biome_tint", "readonly", now);
+        setIfMissing(settingsMapper, "map_vis_players", "readonly", now);
+        setIfMissing(settingsMapper, "map_vis_waypoints", "readonly", now);
+        setIfMissing(settingsMapper, "map_vis_mobs_hostile", "full", now);
+        setIfMissing(settingsMapper, "map_vis_mobs_passive", "full", now);
+        setIfMissing(settingsMapper, "map_vis_entities", "full", now);
+        setIfMissing(settingsMapper, "map_vis_structures", "full", now);
+        setIfMissing(settingsMapper, "map_vis_teleport", "full", now);
+
+        // Whitelist management & review
+        setIfMissing(settingsMapper, "whitelist_management_enabled", "false", now);
+        setIfMissing(settingsMapper, "whitelist_apply_cooldown_sec", "60", now);
+        setIfMissing(settingsMapper, "whitelist_max_pending_per_ip", "5", now);
+        setIfMissing(settingsMapper, "whitelist_send_email", "false", now);
+        setIfMissing(settingsMapper, "whitelist_social_required", "false", now);
+        setIfMissing(settingsMapper, "whitelist_required_social_platforms", "[]", now);
+
+        // Server restart integration
+        setIfMissing(settingsMapper, "server_restart_command", "", now);
+        setIfMissing(settingsMapper, "server_restart_hint", "", now);
+
+        // Chat & In-site messages
+        setIfMissing(settingsMapper, "chat_sync_enabled", "true", now);
+        setIfMissing(settingsMapper, "web_chat_send_enabled", "true", now);
+        setIfMissing(settingsMapper, "chat_retention_days", "30", now);
     }
 
     private static void setIfMissing(SettingsMapper mapper, String key, String value, long now) {

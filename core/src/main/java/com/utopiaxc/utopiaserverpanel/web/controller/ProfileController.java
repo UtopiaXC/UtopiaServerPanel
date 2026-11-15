@@ -1,11 +1,10 @@
 package com.utopiaxc.utopiaserverpanel.web.controller;
 
 import com.google.gson.JsonObject;
-import com.utopiaxc.utopiaserverpanel.auth.JwtClaims;
-import com.utopiaxc.utopiaserverpanel.auth.JwtUtil;
 import com.utopiaxc.utopiaserverpanel.web.context.JsonHelper;
 import com.utopiaxc.utopiaserverpanel.web.context.RequestContext;
 import com.utopiaxc.utopiaserverpanel.web.context.ResponseHelper;
+import com.utopiaxc.utopiaserverpanel.web.service.AuthService;
 import com.utopiaxc.utopiaserverpanel.web.service.ProfileService;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
@@ -43,7 +42,17 @@ public final class ProfileController {
                     userId.intValue(),
                     JsonHelper.str(body, "nickname"),
                     JsonHelper.str(body, "email"),
-                    JsonHelper.str(body, "locale")
+                    JsonHelper.str(body, "locale"),
+                    JsonHelper.str(body, "gender"),
+                    JsonHelper.str(body, "birthday"),
+                    JsonHelper.str(body, "bio"),
+                    body != null && body.has("socialAccounts") ? body.get("socialAccounts") : null,
+                    JsonHelper.str(body, "avatarData"),
+                    body != null && body.has("avatarData"),
+                    body != null && body.has("gender"),
+                    body != null && body.has("birthday"),
+                    body != null && body.has("bio"),
+                    body != null && body.has("socialAccounts")
             );
             if (res.success()) {
                 ResponseHelper.sendOk(ctx, res.data());
@@ -101,12 +110,9 @@ public final class ProfileController {
     public static void setup2fa(RequestContext ctx) {
         Integer userId = (Integer) ctx.getAttribute("userId");
         if (userId == null) {
-            String mfaToken = ctx.header("X-MFA-Token");
-            if (mfaToken != null) {
-                JwtClaims claims = JwtUtil.validateToken(mfaToken);
-                if (claims != null && "mfa_setup".equals(JwtUtil.getPurpose(claims))) {
-                    userId = Integer.valueOf(JwtUtil.getUserId(claims));
-                }
+            AuthService.ValidatedMfaToken validated = AuthService.validateMfaToken(ctx.header("X-MFA-Token"), "mfa_setup");
+            if (validated != null) {
+                userId = Integer.valueOf(validated.user.getId());
             }
         }
         if (userId == null) {
@@ -222,6 +228,28 @@ public final class ProfileController {
             ResponseHelper.sendOk(ctx, Collections.singletonMap("message", "Token revoked"));
         } else {
             ResponseHelper.sendError(ctx, HttpResponseStatus.NOT_FOUND, "NOT_FOUND", "Token not found");
+        }
+    }
+
+    /** GET /api/me/public-profile-settings */
+    public static void getPublicProfilePrivacy(RequestContext ctx) {
+        Integer userId = (Integer) ctx.getAttribute("userId");
+        ResponseHelper.sendOk(ctx, ProfileService.getPrivacyConfig(userId.intValue()));
+    }
+
+    /** PUT /api/me/public-profile-settings */
+    public static void updatePublicProfilePrivacy(RequestContext ctx) {
+        Integer userId = (Integer) ctx.getAttribute("userId");
+        try {
+            JsonObject body = JsonHelper.parseObject(ctx.body());
+            ProfileService.SimpleResult res = ProfileService.updatePrivacyConfig(userId.intValue(), body);
+            if (res.success()) {
+                ResponseHelper.sendOk(ctx, res.data());
+            } else {
+                ResponseHelper.sendError(ctx, HttpResponseStatus.BAD_REQUEST, res.errorCode(), res.message());
+            }
+        } catch (Exception e) {
+            ResponseHelper.sendError(ctx, HttpResponseStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request body");
         }
     }
 }

@@ -1,12 +1,16 @@
 package com.utopiaxc.utopiaserverpanel.web.service;
 
 import com.utopiaxc.utopiaserverpanel.auth.PasswordUtil;
+import com.utopiaxc.utopiaserverpanel.auth.UsernamePolicy;
 import com.utopiaxc.utopiaserverpanel.logging.PanelLog;
 import com.utopiaxc.utopiaserverpanel.web.db.MyBatisFactory;
+import com.utopiaxc.utopiaserverpanel.web.db.mapper.PasskeyMapper;
+import com.utopiaxc.utopiaserverpanel.web.db.mapper.PlayerBindingMapper;
 import com.utopiaxc.utopiaserverpanel.web.db.mapper.RoleMapper;
 import com.utopiaxc.utopiaserverpanel.web.db.mapper.SecurityMapper;
 import com.utopiaxc.utopiaserverpanel.web.db.mapper.SessionMapper;
 import com.utopiaxc.utopiaserverpanel.web.db.mapper.UserMapper;
+import com.utopiaxc.utopiaserverpanel.web.db.model.PlayerBindingInfo;
 import com.utopiaxc.utopiaserverpanel.web.db.model.RoleInfo;
 import com.utopiaxc.utopiaserverpanel.web.db.model.UserAccount;
 
@@ -30,10 +34,12 @@ public final class UserService {
 
         return MyBatisFactory.doWorkWithResult(session -> {
             UserMapper mapper = session.getMapper(UserMapper.class);
+            PlayerBindingMapper bindingMapper = session.getMapper(PlayerBindingMapper.class);
             List<UserAccount> accounts = mapper.listFiltered(search, roleId, status, sortBy, sortOrder, offset, safeSize);
             int total = mapper.countFiltered(search, roleId, status);
             List<Map<String, Object>> items = new ArrayList<>();
             for (UserAccount acc : accounts) {
+                acc.setBoundPlayers(bindingMapper.listByUserId(acc.getId()));
                 items.add(toAdminDto(acc));
             }
             Map<String, Object> result = new LinkedHashMap<>();
@@ -48,7 +54,9 @@ public final class UserService {
     public static Map<String, Object> getUser(int userId) {
         return MyBatisFactory.doWorkWithResult(session -> {
             UserAccount acc = session.getMapper(UserMapper.class).findById(userId);
-            return acc != null ? toAdminDto(acc) : null;
+            if (acc == null) return null;
+            acc.setBoundPlayers(session.getMapper(PlayerBindingMapper.class).listByUserId(userId));
+            return toAdminDto(acc);
         });
     }
 
@@ -73,8 +81,9 @@ public final class UserService {
 
     public static CreateUserResult createUser(String username, String nickname, String email, String password,
                                               int roleId, String status, boolean mustChangePassword, boolean require2fa) {
-        if (username == null || !username.trim().matches("^[a-zA-Z0-9_]{3,32}$")) {
-            return new CreateUserResult(false, "INVALID_USERNAME", "Username must be 3-32 alphanumeric or underscore characters", null);
+        UsernamePolicy.ValidationResult userCheck = UsernamePolicy.validate(username);
+        if (!userCheck.isValid()) {
+            return new CreateUserResult(false, userCheck.getErrorCode(), userCheck.getMessage(), null);
         }
         if (password == null || password.length() < 6) {
             return new CreateUserResult(false, "WEAK_PASSWORD", "Password must be at least 6 characters", null);
@@ -219,6 +228,9 @@ public final class UserService {
             }
 
             UserAccount fresh = userMapper.findById(targetId);
+            if (fresh != null) {
+                fresh.setBoundPlayers(session.getMapper(PlayerBindingMapper.class).listByUserId(targetId));
+            }
             return new UpdateUserResult(true, null, "User updated", toAdminDto(fresh));
         });
     }
@@ -241,8 +253,10 @@ public final class UserService {
         return MyBatisFactory.doWorkWithResult(session -> {
             UserMapper userMapper = session.getMapper(UserMapper.class);
             SecurityMapper secMapper = session.getMapper(SecurityMapper.class);
+            PasskeyMapper pkMapper = session.getMapper(PasskeyMapper.class);
             if (userMapper.findById(targetId) == null) return false;
             secMapper.deleteTotpByUserId(targetId);
+            pkMapper.deleteByUserId(targetId);
             userMapper.bumpTokenVersion(targetId, System.currentTimeMillis() / 1000L);
             return true;
         });
@@ -279,12 +293,17 @@ public final class UserService {
         m.put("mustChangePassword", u.isMustChangePassword());
         m.put("require2fa", u.isRequire2fa());
         m.put("totpEnabled", u.isTotpEnabled());
+        m.put("passkeyCount", u.getPasskeyCount());
+        m.put("twoFactorEnabled", u.isTwoFactorEnabled());
         m.put("failedLoginAttempts", u.getFailedLoginAttempts());
         m.put("lockoutUntil", u.getLockoutUntil());
         m.put("bound", u.isBound());
         m.put("playerUuid", u.getPlayerUuid());
         m.put("playerName", u.getPlayerName());
         m.put("boundAt", u.getBoundAt());
+        List<PlayerBindingInfo> bindings = u.getBoundPlayers() != null ? u.getBoundPlayers() : Collections.emptyList();
+        m.put("boundPlayers", bindings);
+        m.put("boundCount", Integer.valueOf(bindings.size()));
         m.put("locale", u.getLocale());
         m.put("createdAt", u.getCreatedAt());
         m.put("updatedAt", u.getUpdatedAt());

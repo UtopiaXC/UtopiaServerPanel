@@ -7,7 +7,6 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
-import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolConfig;
 import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 
 /**
@@ -20,14 +19,9 @@ public class WebServerInitializer extends ChannelInitializer<SocketChannel> {
     protected void initChannel(SocketChannel ch) {
         ChannelPipeline p = ch.pipeline();
         p.addLast("http-codec", new HttpServerCodec());
-        p.addLast("http-aggregator", new HttpObjectAggregator(65536));
-        WebSocketServerProtocolConfig wsConfig = WebSocketServerProtocolConfig.newBuilder()
-                .websocketPath("/ws")
-                .allowExtensions(true)
-                .maxFramePayloadLength(65536)
-                .checkStartsWith(true)
-                .build();
-        p.addLast("ws-protocol", new WebSocketServerProtocolHandler(wsConfig));
+        p.addLast("http-aggregator", new HttpObjectAggregator(524288));
+        // Use 6-arg constructor (not WebSocketServerProtocolConfig) for Netty 4.1.9+ / 4.1.25+ dev compatibility (1.12.2 / 1.16.5)
+        p.addLast("ws-protocol", new WebSocketServerProtocolHandler("/ws", null, true, 65536, false, true));
         p.addLast("ws-handler", new WebSocketFrameHandler());
         p.addLast("http-dispatcher", new HttpRequestDispatcher());
     }

@@ -12,11 +12,17 @@ import com.utopiaxc.utopiaserverpanel.adapter.model.ServerPropertiesSnapshot;
 import com.utopiaxc.utopiaserverpanel.adapter.model.ServerStatusSnapshot;
 import com.utopiaxc.utopiaserverpanel.adapter.util.CoreWorldDataReader;
 import com.utopiaxc.utopiaserverpanel.adapter.util.ServerPropertiesReader;
+import com.utopiaxc.utopiaserverpanel.spi.map.MapChunkRenderData;
+import com.utopiaxc.utopiaserverpanel.spi.map.MapDimensionInfo;
+import com.utopiaxc.utopiaserverpanel.spi.map.MapMarkerDto;
 import com.utopiaxc.utopiaserverpanel.spi.map.PlayerPositionSnapshot;
+import com.utopiaxc.utopiaserverpanel.spi.mod.ModEntryDto;
+import com.utopiaxc.utopiaserverpanel.spi.profiler.ProfilerHotspotSnapshot;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.dedicated.DedicatedServer;
 import net.minecraft.server.dedicated.DedicatedServerProperties;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.Stats;
 import net.minecraft.world.level.storage.LevelResource;
@@ -340,6 +346,101 @@ public final class ModernGameAdapter implements GameAdapter {
         //?} else {
         return net.minecraftforge.fml.ModList.get().isLoaded(modId);
         //?}
+    }
+
+    @Override
+    public List<MapDimensionInfo> getMapDimensions() {
+        return ModernMapBridge.listDimensions(server);
+    }
+
+    @Override
+    public MapChunkRenderData captureLiveChunkForMap(String dimension, int chunkX, int chunkZ) {
+        return ModernMapBridge.captureLiveChunk(server, dimension, chunkX, chunkZ);
+    }
+
+    @Override
+    public List<MapMarkerDto> collectLiveMapMarkers(String dimension) {
+        return ModernMapBridge.collectLiveMarkers(server, dimension);
+    }
+
+    @Override
+    public ProfilerHotspotSnapshot collectHotspotSnapshot() {
+        return ModernProfilerBridge.collectHotspots(server);
+    }
+
+    @Override
+    public List<ModEntryDto> getLoadedMods() {
+        return ModernModScanner.getLoadedMods();
+    }
+
+    @Override
+    public void broadcastPublicChat(String senderName, String message) {
+        if (server == null || message == null || message.trim().isEmpty()) return;
+        String text = "[Web] <" + (senderName != null ? senderName : "Web") + "> " + message.replace('\n', ' ');
+        server.execute(() -> {
+            //? if mc >= 1.19 {
+            net.minecraft.network.chat.Component comp = net.minecraft.network.chat.Component.literal(text);
+            server.getPlayerList().broadcastSystemMessage(comp, false);
+            //?} else {
+            net.minecraft.network.chat.Component comp = new net.minecraft.network.chat.TextComponent(text);
+            for (ServerPlayer sp : server.getPlayerList().getPlayers()) {
+                sp.sendMessage(comp, net.minecraft.Util.NIL_UUID);
+            }
+            //?}
+        });
+    }
+
+    @Override
+    public void sendDirectPlayerMessage(String playerNameOrUuid, String message) {
+        if (server == null || playerNameOrUuid == null || message == null) return;
+        server.execute(() -> {
+            ServerPlayer target = findPlayer(playerNameOrUuid);
+            if (target != null) {
+                //? if mc >= 1.19 {
+                target.sendSystemMessage(net.minecraft.network.chat.Component.literal(message));
+                //?} else {
+                target.sendMessage(new net.minecraft.network.chat.TextComponent(message), net.minecraft.Util.NIL_UUID);
+                //?}
+            }
+        });
+    }
+
+    @Override
+    public boolean teleportPlayerTo(String playerNameOrUuid, String dimension, double x, double y, double z) {
+        if (server == null || playerNameOrUuid == null) return false;
+        ServerPlayer target = findPlayer(playerNameOrUuid);
+        if (target == null) return false;
+        ServerLevel dest = ModernMapBridge.findLevel(server, dimension);
+        if (dest == null) return false;
+        server.execute(() -> {
+            ServerPlayer live = findPlayer(playerNameOrUuid);
+            if (live != null) {
+                //? if mc >= 1.21.2 {
+                live.teleportTo(dest, x, y, z, java.util.Collections.emptySet(), live.getYRot(), live.getXRot(), true);
+                //?} else if mc >= 1.17 {
+                live.teleportTo(dest, x, y, z, live.getYRot(), live.getXRot());
+                //?} else {
+                live.teleportTo(dest, x, y, z, live.yRot, live.xRot);
+                //?}
+            }
+        });
+        return true;
+    }
+
+    @Override
+    public void shutdownServer(String reason) {
+        if (server != null) {
+            server.execute(() -> server.halt(false));
+        }
+    }
+
+    private ServerPlayer findPlayer(String nameOrUuid) {
+        for (ServerPlayer sp : server.getPlayerList().getPlayers()) {
+            if (nameOrUuid.equalsIgnoreCase(sp.getName().getString()) || nameOrUuid.equalsIgnoreCase(sp.getStringUUID())) {
+                return sp;
+            }
+        }
+        return null;
     }
 }
 

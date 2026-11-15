@@ -8,15 +8,26 @@ import com.utopiaxc.utopiaserverpanel.bridge.jvm.Slf4jPanelLogger;
 import com.utopiaxc.utopiaserverpanel.config.PanelConfig;
 import com.utopiaxc.utopiaserverpanel.platform.shared.ModernCommandBridge;
 import com.utopiaxc.utopiaserverpanel.platform.shared.ModernGameAdapter;
+import com.utopiaxc.utopiaserverpanel.platform.shared.ModernMapBridge;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.CommandEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.ServerChatEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.level.BlockEvent;
+//? if mc >= 26.1 {
+import net.neoforged.neoforge.event.level.block.BreakBlockEvent;
+//?}
+import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import org.slf4j.Logger;
 
 /**
@@ -25,6 +36,7 @@ import org.slf4j.Logger;
 @Mod(PanelEngine.MOD_ID)
 public final class UtopiaServerPanelNeoForgeMod {
     public static final Logger LOGGER = LogUtils.getLogger();
+    private volatile long tickStartNs = 0L;
 
     public UtopiaServerPanelNeoForgeMod() {
         PanelEngine.setLogger(new Slf4jPanelLogger(LOGGER));
@@ -65,6 +77,84 @@ public final class UtopiaServerPanelNeoForgeMod {
     public void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         Player player = event.getEntity();
         PanelEngine.onPlayerLeave(player.getName().getString(), player.getStringUUID());
+    }
+
+    @SubscribeEvent
+    public void onServerChat(ServerChatEvent event) {
+        try {
+            ServerPlayer player = event.getPlayer();
+            if (player != null && event.getRawText() != null) {
+                PanelEngine.onChatMessage(player.getStringUUID(), player.getName().getString(), event.getRawText());
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    @SubscribeEvent
+    public void onCommand(CommandEvent event) {
+        try {
+            String raw = event.getParseResults().getReader().getString().trim();
+            if (raw.startsWith("/")) raw = raw.substring(1);
+            String[] parts = raw.split("\\s+", 3);
+            if (parts.length >= 3) {
+                String cmd = parts[0].toLowerCase(java.util.Locale.ROOT);
+                if ("tell".equals(cmd) || "msg".equals(cmd) || "w".equals(cmd)) {
+                    net.minecraft.world.entity.Entity srcEnt = event.getParseResults().getContext().getSource().getEntity();
+                    String senderName = event.getParseResults().getContext().getSource().getTextName();
+                    String senderUuid = srcEnt != null ? srcEnt.getStringUUID() : null;
+                    PanelEngine.onWhisperMessage(senderUuid, senderName, parts[1], parts[2]);
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    @SubscribeEvent
+    public void onChunkLoad(ChunkEvent.Load event) {
+        try {
+            if (event.getLevel() instanceof ServerLevel) {
+                ServerLevel sl = (ServerLevel) event.getLevel();
+                //? if mc >= 26.1 {
+                PanelEngine.onChunkDirty(ModernMapBridge.dimensionId(sl), event.getChunk().getPos().x(), event.getChunk().getPos().z());
+                //?} else {
+                PanelEngine.onChunkDirty(ModernMapBridge.dimensionId(sl), event.getChunk().getPos().x, event.getChunk().getPos().z);
+                //?}
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    @SubscribeEvent
+    //? if mc >= 26.1 {
+    public void onBlockBreak(BreakBlockEvent event) {
+    //?} else {
+    public void onBlockBreak(BlockEvent.BreakEvent event) {
+    //?}
+        try {
+            if (event.getLevel() instanceof ServerLevel) {
+                ServerLevel sl = (ServerLevel) event.getLevel();
+                PanelEngine.onChunkDirty(ModernMapBridge.dimensionId(sl), event.getPos().getX() >> 4, event.getPos().getZ() >> 4);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    @SubscribeEvent
+    public void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
+        try {
+            if (event.getLevel() instanceof ServerLevel) {
+                ServerLevel sl = (ServerLevel) event.getLevel();
+                PanelEngine.onChunkDirty(ModernMapBridge.dimensionId(sl), event.getPos().getX() >> 4, event.getPos().getZ() >> 4);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    @SubscribeEvent
+    public void onTickPre(ServerTickEvent.Pre event) {
+        tickStartNs = System.nanoTime();
+    }
+
+    @SubscribeEvent
+    public void onTickPost(ServerTickEvent.Post event) {
+        long start = tickStartNs;
+        long total = start > 0L ? (System.nanoTime() - start) : 0L;
+        PanelEngine.onServerTick(total, 0L, 0L, 0L);
     }
 }
 

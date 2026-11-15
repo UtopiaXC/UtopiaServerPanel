@@ -38,7 +38,18 @@
         </n-button>
         <n-button text size="small" @click="handleLogout">{{ $t('common.logout') }}</n-button>
       </div>
+
+      <template v-if="siteStore.whitelistFeatureVisible && !authStore.user?.bound">
+        <n-divider style="margin: 16px 0;" />
+        <n-button block secondary type="info" @click="showWhitelistModal = true">
+          {{ $t('whitelist.applyAndBindBtn') }}
+        </n-button>
+      </template>
     </n-card>
+
+    <n-modal v-model:show="showWhitelistModal" style="max-width: 620px; width: 95vw;">
+      <WhitelistApplyView embedded />
+    </n-modal>
   </div>
 </template>
 
@@ -50,17 +61,21 @@ import { useI18n } from 'vue-i18n'
 import ThemeSwitcher from '../components/ThemeSwitcher.vue'
 import LanguageSelector from '../components/LanguageSelector.vue'
 import FieldHelp from '../components/FieldHelp.vue'
+import WhitelistApplyView from './WhitelistApplyView.vue'
 import { bindingApi } from '../api/binding'
 import { getApiErrorMessage } from '../api/client'
 import { useAuthStore } from '../stores/auth'
+import { useSiteStore } from '../stores/site'
 
 const router = useRouter()
 const message = useMessage()
 const { t } = useI18n()
 const authStore = useAuthStore()
+const siteStore = useSiteStore()
 
 const code = ref('')
 const loading = ref(false)
+const showWhitelistModal = ref(false)
 
 async function handleBind() {
   if (!code.value.trim()) return

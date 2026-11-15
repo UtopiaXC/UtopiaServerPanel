@@ -14,10 +14,13 @@ public interface UserMapper {
             "u.failed_login_attempts AS failedLoginAttempts, u.lockout_until AS lockoutUntil, " +
             "u.token_version AS tokenVersion, u.locale, u.created_at AS createdAt, u.updated_at AS updatedAt, " +
             "pb.player_uuid AS playerUuid, mp.player_name AS playerName, pb.bound_at AS boundAt, " +
-            "COALESCE(ut.enabled, 0) AS totpEnabled " +
+            "COALESCE(ut.enabled, 0) AS totpEnabled, " +
+            "(SELECT COUNT(*) FROM user_passkeys up WHERE up.user_id = u.id) AS passkeyCount " +
             "FROM users u " +
             "LEFT JOIN roles r ON u.role_id = r.id " +
-            "LEFT JOIN player_bindings pb ON pb.user_id = u.id " +
+            "LEFT JOIN player_bindings pb ON pb.id = (" +
+            "  SELECT pb2.id FROM player_bindings pb2 WHERE pb2.user_id = u.id ORDER BY pb2.is_primary DESC, pb2.bound_at ASC, pb2.id ASC LIMIT 1" +
+            ") " +
             "LEFT JOIN mc_players mp ON mp.player_uuid = pb.player_uuid " +
             "LEFT JOIN user_totp ut ON ut.user_id = u.id ";
 
@@ -39,7 +42,7 @@ public interface UserMapper {
             "    (LOWER(u.username) LIKE '%' || LOWER(#{search}) || '%' " +
             "     OR LOWER(u.nickname) LIKE '%' || LOWER(#{search}) || '%' " +
             "     OR LOWER(COALESCE(u.email,'')) LIKE '%' || LOWER(#{search}) || '%' " +
-            "     OR LOWER(COALESCE(mp.player_name,'')) LIKE '%' || LOWER(#{search}) || '%')" +
+            "     OR EXISTS (SELECT 1 FROM player_bindings pbs JOIN mc_players mps ON mps.player_uuid = pbs.player_uuid WHERE pbs.user_id = u.id AND LOWER(mps.player_name) LIKE '%' || LOWER(#{search}) || '%'))" +
             "  </if>" +
             "  <if test='roleId != null'> AND u.role_id = #{roleId}</if>" +
             "  <if test='status != null and status != \"\"'> AND u.status = #{status}</if>" +
@@ -68,14 +71,12 @@ public interface UserMapper {
             @Param("limit") int limit);
 
     @Select("<script>SELECT COUNT(*) FROM users u " +
-            "LEFT JOIN player_bindings pb ON pb.user_id = u.id " +
-            "LEFT JOIN mc_players mp ON mp.player_uuid = pb.player_uuid " +
             "<where>" +
             "  <if test='search != null and search != \"\"'>" +
             "    (LOWER(u.username) LIKE '%' || LOWER(#{search}) || '%' " +
             "     OR LOWER(u.nickname) LIKE '%' || LOWER(#{search}) || '%' " +
             "     OR LOWER(COALESCE(u.email,'')) LIKE '%' || LOWER(#{search}) || '%' " +
-            "     OR LOWER(COALESCE(mp.player_name,'')) LIKE '%' || LOWER(#{search}) || '%')" +
+            "     OR EXISTS (SELECT 1 FROM player_bindings pbs JOIN mc_players mps ON mps.player_uuid = pbs.player_uuid WHERE pbs.user_id = u.id AND LOWER(mps.player_name) LIKE '%' || LOWER(#{search}) || '%'))" +
             "  </if>" +
             "  <if test='roleId != null'> AND u.role_id = #{roleId}</if>" +
             "  <if test='status != null and status != \"\"'> AND u.status = #{status}</if>" +

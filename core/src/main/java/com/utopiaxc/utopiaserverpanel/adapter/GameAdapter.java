@@ -4,7 +4,12 @@ import com.utopiaxc.utopiaserverpanel.adapter.model.OnlinePlayerSnapshot;
 import com.utopiaxc.utopiaserverpanel.adapter.model.PlayerInfoSnapshot;
 import com.utopiaxc.utopiaserverpanel.adapter.model.ServerPropertiesSnapshot;
 import com.utopiaxc.utopiaserverpanel.adapter.model.ServerStatusSnapshot;
+import com.utopiaxc.utopiaserverpanel.spi.map.MapChunkRenderData;
+import com.utopiaxc.utopiaserverpanel.spi.map.MapDimensionInfo;
+import com.utopiaxc.utopiaserverpanel.spi.map.MapMarkerDto;
 import com.utopiaxc.utopiaserverpanel.spi.map.PlayerPositionSnapshot;
+import com.utopiaxc.utopiaserverpanel.spi.mod.ModEntryDto;
+import com.utopiaxc.utopiaserverpanel.spi.profiler.ProfilerHotspotSnapshot;
 
 import java.nio.file.Path;
 import java.util.Collections;
@@ -77,5 +82,63 @@ public interface GameAdapter {
      */
     default boolean isModLoaded(String modId) {
         return false;
+    }
+
+    /** Enumerate all loaded server dimensions for the web map & profiler. */
+    default List<MapDimensionInfo> getMapDimensions() {
+        return Collections.emptyList();
+    }
+
+    /** List currently loaded chunk coordinates {@code [chunkX, chunkZ]} in a dimension. */
+    default List<int[]> listLoadedChunkCoords(String dimension) {
+        return Collections.emptyList();
+    }
+
+    /** Capture top-down 16x16 pixel & height data for a loaded chunk (must be called safely). */
+    default MapChunkRenderData captureLiveChunkForMap(String dimension, int chunkX, int chunkZ) {
+        return null;
+    }
+
+    /** Collect live entity & structure markers for the given dimension (isolated by callers). */
+    default List<MapMarkerDto> collectLiveMapMarkers(String dimension) {
+        return Collections.emptyList();
+    }
+
+    /** Collect entity, block-entity, and dimension hotspot statistics on demand. */
+    default ProfilerHotspotSnapshot collectHotspotSnapshot() {
+        return null;
+    }
+
+    /** Collect installed mod metadata reported by the active loader. */
+    default List<ModEntryDto> getLoadedMods() {
+        return Collections.emptyList();
+    }
+
+    /** Broadcast a chat message from a bound web user into in-game public chat. */
+    default void broadcastPublicChat(String senderName, String message) {
+        if (message == null || message.trim().isEmpty()) return;
+        String prefix = (senderName != null && !senderName.trim().isEmpty()) ? senderName.trim() : "Web";
+        executeCommand("say [Web] <" + prefix + "> " + message.replace('\n', ' ').replace('\r', ' '));
+    }
+
+    /** Send a direct notification or private message to an online player if present. */
+    default void sendDirectPlayerMessage(String playerNameOrUuid, String message) {
+        if (playerNameOrUuid == null || playerNameOrUuid.trim().isEmpty() || message == null) return;
+        executeCommand("msg " + playerNameOrUuid.trim() + " " + message.replace('\n', ' ').replace('\r', ' '));
+    }
+
+    /** Teleport a player to exact coordinates in a dimension, returning true if dispatched. */
+    default boolean teleportPlayerTo(String playerNameOrUuid, String dimension, double x, double y, double z) {
+        return false;
+    }
+
+    /** Ask the server to reload its whitelist file if supported. */
+    default void reloadServerWhitelist() {
+        executeCommand("whitelist reload");
+    }
+
+    /** Gracefully stop the server so external supervisors / containers can restart it. */
+    default void shutdownServer(String reason) {
+        executeCommand("stop");
     }
 }

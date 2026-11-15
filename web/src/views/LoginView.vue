@@ -54,37 +54,94 @@
             {{ $t('auth.submitLogin') }}
           </n-button>
 
+          <n-button
+            v-if="webAuthnSupported"
+            secondary
+            block
+            size="large"
+            style="margin-top: 10px;"
+            :loading="loading"
+            @click="handlePasskeyLogin"
+          >
+            <template #icon>
+              <n-icon :component="KeyOutline" />
+            </template>
+            {{ $t('auth.passkeyLogin') }}
+          </n-button>
+
           <div v-if="siteStore.allowRegistration" class="switch-row">
             <n-button text size="small" type="primary" @click="switchMode('register')">
               {{ $t('auth.noAccount') }}
+            </n-button>
+          </div>
+
+          <div
+            v-if="siteStore.whitelistFeatureVisible && (siteStore.guestPermissions.whitelist_apply ?? 2) >= 2"
+            class="switch-row"
+          >
+            <n-button text size="small" type="primary" @click="router.push('/whitelist/apply')">
+              {{ $t('whitelist.applyLink') }}
             </n-button>
           </div>
         </n-form>
 
         <!-- MFA Code Challenge -->
         <div v-else-if="loginStage === 'mfa'">
-          <p class="auth-subtext">{{ $t('auth.mfaPrompt') }}</p>
-          <n-form @submit.prevent="handleVerifyMfa">
-            <n-form-item :label="$t('auth.mfaCode')">
-              <n-input
-                v-model:value="mfaCode"
-                maxlength="6"
-                size="large"
-                clearable
-                @keydown.enter.prevent="handleVerifyMfa"
-              />
-            </n-form-item>
+          <n-tabs
+            v-if="mfaMethods.length > 1 && webAuthnSupported"
+            v-model:value="mfaActiveMethod"
+            type="segment"
+            size="small"
+            style="margin-bottom: 14px;"
+          >
+            <n-tab-pane v-if="mfaMethods.includes('totp')" name="totp" :tab="$t('auth.methodTotp')" />
+            <n-tab-pane v-if="mfaMethods.includes('passkey')" name="passkey" :tab="$t('auth.methodPasskey')" />
+          </n-tabs>
 
+          <template v-if="mfaActiveMethod === 'passkey' && mfaMethods.includes('passkey')">
+            <p class="auth-subtext">{{ $t('auth.mfaPasskeyPrompt') }}</p>
+            <n-alert v-if="!webAuthnSupported" type="warning" style="margin-bottom: 12px;">
+              {{ $t('settings.passkeyUnsupported') }}
+            </n-alert>
             <n-button
+              v-else
               type="primary"
               block
               size="large"
               :loading="loading"
-              @click="handleVerifyMfa"
+              @click="handleVerifyMfaPasskey"
             >
-              {{ $t('auth.verifyLogin') }}
+              <template #icon>
+                <n-icon :component="KeyOutline" />
+              </template>
+              {{ $t('auth.verifyWithPasskey') }}
             </n-button>
-          </n-form>
+          </template>
+
+          <template v-else>
+            <p class="auth-subtext">{{ $t('auth.mfaPrompt') }}</p>
+            <n-form @submit.prevent="handleVerifyMfa">
+              <n-form-item :label="$t('auth.mfaCode')">
+                <n-input
+                  v-model:value="mfaCode"
+                  maxlength="6"
+                  size="large"
+                  clearable
+                  @keydown.enter.prevent="handleVerifyMfa"
+                />
+              </n-form-item>
+
+              <n-button
+                type="primary"
+                block
+                size="large"
+                :loading="loading"
+                @click="handleVerifyMfa"
+              >
+                {{ $t('auth.verifyLogin') }}
+              </n-button>
+            </n-form>
+          </template>
 
           <div class="login-links-row" style="margin-top: 14px; margin-bottom: 0;">
             <n-button text size="small" type="warning" @click="switchMode('forgot-2fa')">
@@ -100,37 +157,73 @@
         <div v-else-if="loginStage === 'setup2fa'">
           <p class="auth-subtext">{{ $t('auth.setup2faHelp') }}</p>
 
-          <div style="text-align: center; margin-bottom: 14px;">
-            <div v-if="setupQrUrl" class="qr-frame">
-              <img :src="setupQrUrl" alt="TOTP QR" class="qr-img" />
-            </div>
-            <n-spin v-else size="medium" />
-            <div v-if="setupSecret" class="secret-line">
-              <span>{{ $t('auth.secretKey') }}:</span>
-              <code class="mono secret-code">{{ setupSecret }}</code>
-            </div>
-          </div>
+          <n-tabs
+            v-if="webAuthnSupported"
+            v-model:value="setup2faMethod"
+            type="segment"
+            size="small"
+            style="margin-bottom: 14px;"
+          >
+            <n-tab-pane name="totp" :tab="$t('auth.methodTotp')" />
+            <n-tab-pane name="passkey" :tab="$t('auth.methodPasskey')" />
+          </n-tabs>
 
-          <n-form @submit.prevent="handleCompleteSetup2fa">
-            <n-form-item :label="$t('auth.mfaCode')">
-              <n-input
-                v-model:value="setupTotpCode"
-                maxlength="6"
+          <template v-if="setup2faMethod === 'passkey' && webAuthnSupported">
+            <n-form @submit.prevent="handleCompleteSetupPasskey">
+              <n-form-item :label="$t('settings.passkeyName')">
+                <n-input
+                  v-model:value="setupPasskeyName"
+                  :placeholder="$t('settings.passkeyNamePlaceholder')"
+                />
+              </n-form-item>
+              <n-button
+                type="primary"
+                block
                 size="large"
-                @keydown.enter.prevent="handleCompleteSetup2fa"
-              />
-            </n-form-item>
+                :loading="loading"
+                @click="handleCompleteSetupPasskey"
+              >
+                <template #icon>
+                  <n-icon :component="KeyOutline" />
+                </template>
+                {{ $t('auth.registerPasskeyAndLogin') }}
+              </n-button>
+            </n-form>
+          </template>
 
-            <n-button
-              type="primary"
-              block
-              size="large"
-              :loading="loading"
-              @click="handleCompleteSetup2fa"
-            >
-              {{ $t('auth.verifyLogin') }}
-            </n-button>
-          </n-form>
+          <template v-else>
+            <div style="text-align: center; margin-bottom: 14px;">
+              <div v-if="setupQrUrl" class="qr-frame">
+                <img :src="setupQrUrl" alt="TOTP QR" class="qr-img" />
+              </div>
+              <n-spin v-else size="medium" />
+              <div v-if="setupSecret" class="secret-line">
+                <span>{{ $t('auth.secretKey') }}:</span>
+                <code class="mono secret-code">{{ setupSecret }}</code>
+              </div>
+            </div>
+
+            <n-form @submit.prevent="handleCompleteSetup2fa">
+              <n-form-item :label="$t('auth.mfaCode')">
+                <n-input
+                  v-model:value="setupTotpCode"
+                  maxlength="6"
+                  size="large"
+                  @keydown.enter.prevent="handleCompleteSetup2fa"
+                />
+              </n-form-item>
+
+              <n-button
+                type="primary"
+                block
+                size="large"
+                :loading="loading"
+                @click="handleCompleteSetup2fa"
+              >
+                {{ $t('auth.verifyLogin') }}
+              </n-button>
+            </n-form>
+          </template>
 
           <div class="switch-row">
             <n-button text size="small" @click="resetToPassword">
@@ -332,7 +425,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import QRCode from 'qrcode'
-import { LockClosedOutline, PersonOutline } from '@vicons/ionicons5'
+import { KeyOutline, LockClosedOutline, PersonOutline } from '@vicons/ionicons5'
 import ThemeSwitcher from '../components/ThemeSwitcher.vue'
 import LanguageSelector from '../components/LanguageSelector.vue'
 import FieldHelp from '../components/FieldHelp.vue'
@@ -342,6 +435,8 @@ import { profileApi } from '../api/profile'
 import { getApiErrorMessage } from '../api/client'
 import { useSiteStore } from '../stores/site'
 import { useAuthStore } from '../stores/auth'
+import { createPasskeyCredential, getPasskeyAssertion, isWebAuthnSupported } from '../utils/webauthn'
+import { validateUsernameErrorKey } from '../utils/username'
 
 type AuthMode =
   | 'login'
@@ -375,11 +470,16 @@ const loginForm = reactive({
   captcha: ''
 })
 
+const webAuthnSupported = isWebAuthnSupported()
 const mfaToken = ref('')
 const mfaCode = ref('')
+const mfaMethods = ref<string[]>(['totp'])
+const mfaActiveMethod = ref<'totp' | 'passkey'>('totp')
+const setup2faMethod = ref<'totp' | 'passkey'>('totp')
 const setupSecret = ref('')
 const setupQrUrl = ref('')
 const setupTotpCode = ref('')
+const setupPasskeyName = ref('')
 
 const regForm = reactive({
   username: '',
@@ -454,6 +554,8 @@ function navigateAfterAuth() {
 async function beginForcedSetup2fa(token: string) {
   mfaToken.value = token
   loginStage.value = 'setup2fa'
+  setup2faMethod.value = 'totp'
+  setupPasskeyName.value = ''
   setupSecret.value = ''
   setupQrUrl.value = ''
   try {
@@ -463,6 +565,34 @@ async function beginForcedSetup2fa(token: string) {
   } catch (err) {
     message.error(getApiErrorMessage(err))
     resetToPassword()
+  }
+}
+
+async function handlePasskeyLogin() {
+  if (!webAuthnSupported) {
+    message.warning(t('settings.passkeyUnsupported'))
+    return
+  }
+  loading.value = true
+  try {
+    const opts = await authApi.passkeyLoginOptions(loginForm.username.trim() || undefined)
+    const credential = await getPasskeyAssertion(opts.publicKey)
+    const res = await authApi.passkeyLoginVerify({
+      challengeId: opts.challengeId,
+      credential,
+      rememberMe: loginForm.rememberMe
+    })
+    authStore.applySessionPayload(res)
+    message.success(t('auth.loginSuccess'))
+    navigateAfterAuth()
+  } catch (err: any) {
+    if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') {
+      message.warning(t('settings.passkeyCancelled'))
+    } else {
+      message.error(err instanceof Error && !(err as any)?.response ? err.message : getApiErrorMessage(err))
+    }
+  } finally {
+    loading.value = false
   }
 }
 
@@ -483,6 +613,9 @@ async function handleLogin() {
     })
     if (result.status === 'mfa') {
       mfaToken.value = result.mfaToken
+      const methods = result.available2faMethods?.length ? result.available2faMethods : ['totp']
+      mfaMethods.value = methods
+      mfaActiveMethod.value = methods.includes('passkey') && !methods.includes('totp') ? 'passkey' : 'totp'
       loginStage.value = 'mfa'
     } else if (result.status === 'setup2fa') {
       await beginForcedSetup2fa(result.mfaToken)
@@ -518,6 +651,34 @@ async function handleVerifyMfa() {
   }
 }
 
+async function handleVerifyMfaPasskey() {
+  if (!webAuthnSupported) {
+    message.warning(t('settings.passkeyUnsupported'))
+    return
+  }
+  loading.value = true
+  try {
+    const opts = await authApi.passkeyMfaOptions(mfaToken.value)
+    const credential = await getPasskeyAssertion(opts.publicKey)
+    const res = await authApi.passkeyMfaVerify({
+      challengeId: opts.challengeId,
+      mfaToken: mfaToken.value,
+      credential
+    })
+    authStore.applySessionPayload(res)
+    message.success(t('auth.loginSuccess'))
+    navigateAfterAuth()
+  } catch (err: any) {
+    if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') {
+      message.warning(t('settings.passkeyCancelled'))
+    } else {
+      message.error(err instanceof Error && !(err as any)?.response ? err.message : getApiErrorMessage(err))
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
 async function handleCompleteSetup2fa() {
   if (!setupTotpCode.value.trim()) return
   loading.value = true
@@ -535,7 +696,45 @@ async function handleCompleteSetup2fa() {
   }
 }
 
+async function handleCompleteSetupPasskey() {
+  if (!webAuthnSupported) {
+    message.warning(t('settings.passkeyUnsupported'))
+    return
+  }
+  loading.value = true
+  try {
+    const opts = await profileApi.beginPasskeyRegister(mfaToken.value)
+    const credential = await createPasskeyCredential(opts.publicKey)
+    const res = await profileApi.finishPasskeyRegister(
+      {
+        challengeId: opts.challengeId,
+        name: setupPasskeyName.value.trim() || undefined,
+        credential
+      },
+      mfaToken.value
+    )
+    if (res?.accessToken) {
+      authStore.applySessionPayload(res)
+    }
+    message.success(t('auth.loginSuccess'))
+    navigateAfterAuth()
+  } catch (err: any) {
+    if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') {
+      message.warning(t('settings.passkeyCancelled'))
+    } else {
+      message.error(err instanceof Error && !(err as any)?.response ? err.message : getApiErrorMessage(err))
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
 async function handleRegister() {
+  const userErrKey = validateUsernameErrorKey(regForm.username)
+  if (userErrKey) {
+    message.warning(t(`errors.${userErrKey}`))
+    return
+  }
   if (regForm.password !== regForm.confirmPassword) {
     message.warning(t('setup.passwordMismatch'))
     return

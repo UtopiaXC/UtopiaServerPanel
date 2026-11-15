@@ -122,6 +122,88 @@ public final class EmailTemplateRenderer {
         return new RenderedEmail(subject, html, text);
     }
 
+    public static RenderedEmail renderWhitelistReviewEmail(
+            String locale,
+            String siteName,
+            boolean approved,
+            String playerName,
+            String resolvedUuid,
+            String reviewNote
+    ) {
+        boolean isEn = locale != null && locale.toLowerCase(Locale.ROOT).startsWith("en");
+        String safeSite = escapeHtml(siteName != null && !siteName.trim().isEmpty() ? siteName : "Utopia Server Panel");
+        String safePlayer = escapeHtml(playerName != null ? playerName : "");
+        String safeUuid = escapeHtml(resolvedUuid != null ? resolvedUuid : "");
+        String safeNote = escapeHtml(reviewNote != null ? reviewNote.trim() : "");
+
+        String badgeText = isEn
+                ? (approved ? "APPROVED" : "REJECTED")
+                : (approved ? "已通过" : "未通过");
+        String badgeBg = approved ? "#064e3b" : "#450a0a";
+        String badgeColor = approved ? "#6ee7b7" : "#fca5a5";
+        String title = isEn
+                ? (approved ? "Whitelist Application Approved" : "Whitelist Application Update")
+                : (approved ? "白名单申请已通过" : "白名单申请审核结果通知");
+        String lead = isEn
+                ? (approved
+                    ? "Your Minecraft whitelist request for player <strong>" + safePlayer + "</strong> has been approved. You can now join the server."
+                    : "Your Minecraft whitelist request for player <strong>" + safePlayer + "</strong> was not approved at this time.")
+                : (approved
+                    ? "您提交的玩家 <strong>" + safePlayer + "</strong> 白名单申请已通过审核，现在可以登录服务器游玩。"
+                    : "您提交的玩家 <strong>" + safePlayer + "</strong> 白名单申请暂未通过审核。");
+        String noteLabel = isEn ? "Reviewer Note" : "审核备注";
+        String uuidLabel = isEn ? "Assigned UUID" : "绑定 UUID";
+        String playerLabel = isEn ? "Minecraft ID" : "游戏角色名";
+
+        String subject = "[" + safeSite + "] " + title + " - " + (playerName != null ? playerName : "");
+
+        StringBuilder details = new StringBuilder();
+        details.append("<table style=\"width:100%;border-collapse:collapse;margin:18px 0;background:#121216;border:1px solid #26262e;border-radius:8px;\">");
+        details.append("<tr><td style=\"padding:10px 14px;font-size:12px;color:#9ca3af;border-bottom:1px solid #222229;\">").append(playerLabel)
+                .append("</td><td style=\"padding:10px 14px;font-size:13px;color:#f3f4f6;font-weight:600;border-bottom:1px solid #222229;\">").append(safePlayer).append("</td></tr>");
+        if (!safeUuid.isEmpty()) {
+            details.append("<tr><td style=\"padding:10px 14px;font-size:12px;color:#9ca3af;border-bottom:1px solid #222229;\">").append(uuidLabel)
+                    .append("</td><td style=\"padding:10px 14px;font-size:12px;color:#d1d5db;font-family:monospace;border-bottom:1px solid #222229;\">").append(safeUuid).append("</td></tr>");
+        }
+        if (!safeNote.isEmpty()) {
+            details.append("<tr><td style=\"padding:10px 14px;font-size:12px;color:#9ca3af;\">").append(noteLabel)
+                    .append("</td><td style=\"padding:10px 14px;font-size:13px;color:#d1d5db;\">").append(safeNote).append("</td></tr>");
+        }
+        details.append("</table>");
+
+        String html = "<!DOCTYPE html>\n"
+                + "<html>\n"
+                + "<head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"></head>\n"
+                + "<body style=\"margin:0;padding:0;background:#101014;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e5e7eb;\">\n"
+                + "  <div style=\"max-width:560px;margin:32px auto;background:#18181c;border:1px solid #2b2b33;border-radius:10px;overflow:hidden;\">\n"
+                + "    <div style=\"padding:24px 28px;border-bottom:1px solid #26262e;display:flex;justify-content:space-between;align-items:center;\">\n"
+                + "      <span style=\"font-size:17px;font-weight:700;color:#63e2b7;\">" + safeSite + "</span>\n"
+                + "      <span style=\"font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:" + badgeBg + ";color:" + badgeColor + ";margin-left:12px;\">" + badgeText + "</span>\n"
+                + "    </div>\n"
+                + "    <div style=\"padding:28px;\">\n"
+                + "      <h2 style=\"margin:0 0 12px;font-size:20px;color:#ffffff;\">" + escapeHtml(title) + "</h2>\n"
+                + "      <p style=\"margin:0 0 14px;font-size:14px;line-height:1.6;color:#9ca3af;\">" + lead + "</p>\n"
+                +        details.toString() + "\n"
+                + "      <p style=\"margin:16px 0 0;font-size:12px;color:#6b7280;\">" + safeSite + "</p>\n"
+                + "    </div>\n"
+                + "  </div>\n"
+                + "</body>\n"
+                + "</html>\n";
+
+        StringBuilder text = new StringBuilder();
+        text.append(siteName).append(" - ").append(title).append("\n\n");
+        text.append(lead.replaceAll("<[^>]+>", "")).append("\n\n");
+        text.append(playerLabel).append(": ").append(playerName != null ? playerName : "").append("\n");
+        if (resolvedUuid != null && !resolvedUuid.isEmpty()) {
+            text.append(uuidLabel).append(": ").append(resolvedUuid).append("\n");
+        }
+        if (reviewNote != null && !reviewNote.trim().isEmpty()) {
+            text.append(noteLabel).append(": ").append(reviewNote.trim()).append("\n");
+        }
+
+        return new RenderedEmail(subject, html, text.toString());
+    }
+
     private static String escapeHtml(String s) {
         if (s == null) return "";
         return s.replace("&", "&amp;")

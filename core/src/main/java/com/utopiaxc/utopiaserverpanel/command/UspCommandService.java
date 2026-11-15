@@ -1,8 +1,12 @@
 package com.utopiaxc.utopiaserverpanel.command;
 
+import com.utopiaxc.utopiaserverpanel.web.db.model.InSiteMessage;
 import com.utopiaxc.utopiaserverpanel.web.service.BindingService;
 import com.utopiaxc.utopiaserverpanel.web.service.InGameRecoveryService;
+import com.utopiaxc.utopiaserverpanel.web.service.MessageService;
 import com.utopiaxc.utopiaserverpanel.web.service.SetupService;
+
+import java.util.List;
 
 /**
  * Pure Java 8 command business handler for all {@code /usp} subcommands:
@@ -111,6 +115,48 @@ public final class UspCommandService {
         appendClickHint(rt, isZh);
         rt.append("\n")
                 .append(tip, RichText.Color.GRAY);
+        return CommandOutcome.ok(rt);
+    }
+
+    public CommandOutcome executeSendMessage(CommandCaller caller, String target, String content) {
+        if (caller == null || !caller.isPlayer()) {
+            return CommandOutcome.fail("This command can only be executed by a player.");
+        }
+        boolean isZh = caller.isChinese();
+        if (target == null || target.trim().isEmpty() || content == null || content.trim().isEmpty()) {
+            return CommandOutcome.fail(isZh ? "用法: /usp msg <目标玩家/面板账号> <内容>" : "Usage: /usp msg <target> <message>");
+        }
+        try {
+            InSiteMessage sent = MessageService.sendDirectMessage(
+                    null, caller.getPlayerUuid(), caller.getPlayerName(), target.trim(), "In-Game Mail", content.trim());
+            boolean delivered = sent.isDeliveredIngame();
+            String text = isZh
+                    ? (delivered ? "消息已发送并实时投递给 " : "离线消息已发送至 ") + sent.getRecipientName()
+                    : (delivered ? "Message sent and delivered to " : "Offline message queued for ") + sent.getRecipientName();
+            return CommandOutcome.ok(new RichText().append(text, RichText.Color.GREEN));
+        } catch (IllegalArgumentException e) {
+            return CommandOutcome.fail(isZh ? "未找到收件玩家或面板用户: " + target : e.getMessage());
+        }
+    }
+
+    public CommandOutcome executeInbox(CommandCaller caller) {
+        if (caller == null || !caller.isPlayer()) {
+            return CommandOutcome.fail("This command can only be executed by a player.");
+        }
+        boolean isZh = caller.isChinese();
+        List<InSiteMessage> list = MessageService.getInGameInboxAndMarkDelivered(
+                caller.getPlayerUuid(), caller.getPlayerName(), 8);
+        if (list == null || list.isEmpty()) {
+            return CommandOutcome.ok(new RichText().append(
+                    isZh ? "您的收件箱暂无未读消息。" : "Your inbox has no unread messages.", RichText.Color.GRAY));
+        }
+        RichText rt = new RichText().append(
+                (isZh ? "=== 未读站内信 (" : "=== Unread Messages (") + list.size() + ") ===",
+                RichText.Color.YELLOW);
+        for (InSiteMessage m : list) {
+            rt.append("\n[" + (m.getSenderName() != null ? m.getSenderName() : "System") + "] ", RichText.Color.AQUA)
+                    .append(m.getContent() != null ? m.getContent() : "", RichText.Color.DEFAULT);
+        }
         return CommandOutcome.ok(rt);
     }
 

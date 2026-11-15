@@ -128,7 +128,34 @@
                   </n-tag>
                 </td>
                 <td>
-                  <div v-if="u.bound" style="display: flex; align-items: center; gap: 6px;">
+                  <div
+                    v-if="u.boundPlayers && u.boundPlayers.length > 0"
+                    style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px;"
+                  >
+                    <n-tag
+                      v-for="bp in u.boundPlayers"
+                      :key="bp.playerUuid"
+                      size="small"
+                      :type="bp.primary ? 'success' : 'default'"
+                      :bordered="false"
+                    >
+                      <span>{{ bp.playerName }}</span>
+                      <n-popconfirm v-if="canWrite" @positive-click="handleUnbind(u.id, bp.playerUuid)">
+                        <template #trigger>
+                          <n-button
+                            size="tiny"
+                            text
+                            type="warning"
+                            style="margin-left: 4px; font-size: 11px;"
+                          >
+                            ×
+                          </n-button>
+                        </template>
+                        {{ $t('adminUsers.confirmUnbindSingle', { name: bp.playerName }) }}
+                      </n-popconfirm>
+                    </n-tag>
+                  </div>
+                  <div v-else-if="u.bound" style="display: flex; align-items: center; gap: 6px;">
                     <n-tag size="small" type="success" :bordered="false">{{ u.playerName }}</n-tag>
                     <n-popconfirm v-if="canWrite" @positive-click="handleUnbind(u.id)">
                       <template #trigger>
@@ -142,13 +169,18 @@
                   <span v-else style="color: var(--usp-text-muted); font-size: 12px;">-</span>
                 </td>
                 <td>
-                  <n-tag
-                    size="small"
-                    :bordered="false"
-                    :type="u.totpEnabled ? 'success' : u.require2fa ? 'warning' : 'default'"
-                  >
-                    {{ u.totpEnabled ? $t('common.enabled') : $t('common.disabled') }}
-                  </n-tag>
+                  <n-space size="small">
+                    <n-tag
+                      size="small"
+                      :bordered="false"
+                      :type="u.twoFactorEnabled || u.totpEnabled || (u.passkeyCount ?? 0) > 0 ? 'success' : u.require2fa ? 'warning' : 'default'"
+                    >
+                      {{ u.twoFactorEnabled || u.totpEnabled || (u.passkeyCount ?? 0) > 0 ? $t('common.enabled') : $t('common.disabled') }}
+                    </n-tag>
+                    <n-tag v-if="(u.passkeyCount ?? 0) > 0" size="tiny" type="info" :bordered="false">
+                      Passkey ×{{ u.passkeyCount }}
+                    </n-tag>
+                  </n-space>
                 </td>
                 <td class="mono" style="font-size: 12px; white-space: nowrap;">
                   {{ formatTimestamp(u.createdAt) }}
@@ -169,7 +201,10 @@
                       {{ $t('adminUsers.unlock') }}
                     </n-button>
 
-                    <n-popconfirm v-if="u.totpEnabled" @positive-click="handleReset2fa(u.id)">
+                    <n-popconfirm
+                      v-if="u.twoFactorEnabled || u.totpEnabled || (u.passkeyCount ?? 0) > 0"
+                      @positive-click="handleReset2fa(u.id)"
+                    >
                       <template #trigger>
                         <n-button size="tiny" quaternary type="warning">
                           {{ $t('adminUsers.reset2fa') }}
@@ -328,6 +363,7 @@ import { adminApi, type AdminUserItem, type RoleItem } from '../api/admin'
 import { getApiErrorMessage } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 import { formatTimestamp } from '../utils/format'
+import { validateUsernameErrorKey } from '../utils/username'
 
 const message = useMessage()
 const { t } = useI18n()
@@ -485,6 +521,11 @@ function openCreate() {
 }
 
 async function handleCreate() {
+  const userErrKey = validateUsernameErrorKey(createForm.username)
+  if (userErrKey) {
+    message.warning(t(`errors.${userErrKey}`))
+    return
+  }
   saving.value = true
   try {
     await adminApi.createUser({ ...createForm })
@@ -543,9 +584,9 @@ async function handleDelete(id: number) {
   }
 }
 
-async function handleUnbind(id: number) {
+async function handleUnbind(id: number, playerUuid?: string) {
   try {
-    await adminApi.unbindUser(id)
+    await adminApi.unbindUser(id, playerUuid)
     message.success(t('common.updated'))
     await loadUsers()
   } catch (err) {

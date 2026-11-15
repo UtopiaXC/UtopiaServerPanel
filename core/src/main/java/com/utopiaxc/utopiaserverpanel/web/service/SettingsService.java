@@ -1,13 +1,28 @@
 package com.utopiaxc.utopiaserverpanel.web.service;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.utopiaxc.utopiaserverpanel.adapter.AdapterRegistry;
+import com.utopiaxc.utopiaserverpanel.adapter.GameAdapter;
+import com.utopiaxc.utopiaserverpanel.adapter.model.ServerPropertiesSnapshot;
+import com.utopiaxc.utopiaserverpanel.adapter.util.ServerPropertiesReader;
 import com.utopiaxc.utopiaserverpanel.auth.CryptoUtil;
 import com.utopiaxc.utopiaserverpanel.mail.SmtpMailer;
+import com.utopiaxc.utopiaserverpanel.web.context.JsonHelper;
 import com.utopiaxc.utopiaserverpanel.web.db.MyBatisFactory;
 import com.utopiaxc.utopiaserverpanel.web.db.mapper.SettingsMapper;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -17,6 +32,33 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class SettingsService {
     private static final ConcurrentHashMap<String, String> CACHE = new ConcurrentHashMap<>();
     private static volatile boolean loaded = false;
+    private static final int MAX_FAVICON_BYTES = 256 * 1024;
+    private static final Set<String> ALLOWED_FAVICON_MIMES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
+            "image/png",
+            "image/x-icon",
+            "image/vnd.microsoft.icon",
+            "image/jpeg",
+            "image/webp",
+            "image/svg+xml"
+    )));
+
+    public static final class FaviconPayload {
+        private final byte[] bytes;
+        private final String contentType;
+
+        public FaviconPayload(byte[] bytes, String contentType) {
+            this.bytes = bytes;
+            this.contentType = contentType;
+        }
+
+        public byte[] getBytes() {
+            return bytes;
+        }
+
+        public String getContentType() {
+            return contentType;
+        }
+    }
 
     private SettingsService() {}
 
@@ -178,6 +220,87 @@ public final class SettingsService {
         set("smtp_password", "");
     }
 
+    public static boolean hasCustomFavicon() {
+        return !get("site_favicon", "").trim().isEmpty();
+    }
+
+    public static String getFaviconVersion() {
+        String ver = get("site_favicon_version", "default").trim();
+        if (ver.isEmpty()) {
+            return hasCustomFavicon() ? "1" : "default";
+        }
+        return ver;
+    }
+
+    public static String getFaviconUrl() {
+        return "/api/site/favicon?v=" + getFaviconVersion();
+    }
+
+    public static FaviconPayload decodeFaviconDataUrl(String dataUrl) {
+        if (dataUrl == null) {
+            throw new IllegalArgumentException("Favicon dataUrl is required");
+        }
+        String trimmed = dataUrl.trim();
+        if (!trimmed.toLowerCase(Locale.ROOT).startsWith("data:")) {
+            throw new IllegalArgumentException("Invalid favicon format");
+        }
+        int commaIdx = trimmed.indexOf(',');
+        if (commaIdx <= 5) {
+            throw new IllegalArgumentException("Invalid favicon data URI");
+        }
+        String meta = trimmed.substring(5, commaIdx);
+        String payload = trimmed.substring(commaIdx + 1).replaceAll("\\s+", "");
+        boolean isBase64 = meta.toLowerCase(Locale.ROOT).endsWith(";base64");
+        if (!isBase64) {
+            throw new IllegalArgumentException("Favicon must be base64 encoded");
+        }
+        String mime = meta.substring(0, meta.length() - ";base64".length()).trim().toLowerCase(Locale.ROOT);
+        if (!ALLOWED_FAVICON_MIMES.contains(mime)) {
+            throw new IllegalArgumentException("Unsupported image format: " + mime);
+        }
+        byte[] decoded;
+        try {
+            decoded = Base64.getDecoder().decode(payload);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid base64 image payload");
+        }
+        if (decoded.length == 0) {
+            throw new IllegalArgumentException("Favicon image is empty");
+        }
+        if (decoded.length > MAX_FAVICON_BYTES) {
+            throw new IllegalArgumentException("Favicon exceeds 256 KB limit");
+        }
+        return new FaviconPayload(decoded, mime);
+    }
+
+    public static void saveFavicon(String dataUrl) {
+        FaviconPayload parsed = decodeFaviconDataUrl(dataUrl);
+        String canonical = "data:" + parsed.getContentType() + ";base64," + Base64.getEncoder().encodeToString(parsed.getBytes());
+        Map<String, String> updates = new LinkedHashMap<>();
+        updates.put("site_favicon", canonical);
+        updates.put("site_favicon_version", String.valueOf(System.currentTimeMillis()));
+        setMany(updates);
+    }
+
+    public static void resetFavicon() {
+        Map<String, String> updates = new LinkedHashMap<>();
+        updates.put("site_favicon", "");
+        updates.put("site_favicon_version", "default");
+        setMany(updates);
+    }
+
+    public static FaviconPayload getCustomFaviconPayload() {
+        String raw = get("site_favicon", "").trim();
+        if (raw.isEmpty()) {
+            return null;
+        }
+        try {
+            return decodeFaviconDataUrl(raw);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
     /**
      * Publicly visible metadata (NEVER exposes SMTP password, host, credentials, or crypto keys).
      */
@@ -188,6 +311,9 @@ public final class SettingsService {
         info.put("siteDescription", get("site_description", "Minecraft Server Management Panel"));
         info.put("baseUrl", getBaseUrl());
         info.put("defaultLocale", getDefaultLocale());
+        info.put("hasCustomFavicon", Boolean.valueOf(hasCustomFavicon()));
+        info.put("faviconVersion", getFaviconVersion());
+        info.put("faviconUrl", getFaviconUrl());
         info.put("allowRegistration", isAllowRegistration());
         info.put("requireEmailVerification", isRequireEmailVerification());
         info.put("requireBindingOnRegister", isRequireBindingOnRegister());
@@ -198,7 +324,133 @@ public final class SettingsService {
         info.put("guestPermissions", PermissionService.getGuestPermissionLevels());
         info.put("permissionsCatalog", PermissionService.listPermissionDefinitions());
         info.put("monitorShowPlayerNames", MonitorConfigService.isShowPlayerNames());
+        info.put("mapEnabled", Boolean.valueOf(isMapEnabled()));
+        info.put("serverWhitelistEnabled", Boolean.valueOf(isServerWhitelistEnabled()));
+        info.put("whitelistManagementEnabled", Boolean.valueOf(isWhitelistManagementEnabled()));
+        info.put("whitelistFeatureVisible", Boolean.valueOf(isWhitelistFeatureVisible()));
+        info.put("whitelistAllowGuest", Boolean.valueOf(PermissionService.guestMeetsRequirement("whitelist_apply:2")));
+        info.put("whitelistSocialRequired", Boolean.valueOf(isWhitelistSocialRequired()));
+        info.put("whitelistRequiredSocialPlatforms", getWhitelistRequiredSocialPlatforms());
+        info.put("chatSyncEnabled", Boolean.valueOf(getBool("chat_sync_enabled", true)));
+        info.put("webChatSendEnabled", Boolean.valueOf(getBool("web_chat_send_enabled", true)));
         return info;
+    }
+
+    public static boolean isMapEnabled() {
+        return getBool("map_enabled", true);
+    }
+
+    public static boolean isWhitelistManagementEnabled() {
+        return getBool("whitelist_management_enabled", false);
+    }
+
+    public static boolean isServerWhitelistEnabled() {
+        try {
+            GameAdapter adapter = AdapterRegistry.getAdapter();
+            if (adapter == null) return false;
+            ServerPropertiesSnapshot snap = adapter.getServerProperties();
+            if (snap != null) {
+                return snap.isWhiteList();
+            }
+            Properties raw = ServerPropertiesReader.loadRawServerProperties(adapter.getServerDirectory());
+            return Boolean.parseBoolean(raw.getProperty("white-list", "false"));
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
+    public static boolean isWhitelistFeatureVisible() {
+        return isServerWhitelistEnabled() && isWhitelistManagementEnabled();
+    }
+
+    public static boolean isWhitelistSendEmail() {
+        return isSmtpEnabled() && getBool("whitelist_send_email", false);
+    }
+
+    public static boolean isWhitelistSocialRequired() {
+        return getBool("whitelist_social_required", false);
+    }
+
+    public static List<String> getWhitelistRequiredSocialPlatforms() {
+        String raw = get("whitelist_required_social_platforms", "[]");
+        if (raw == null || raw.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+        try {
+            JsonArray arr = JsonHelper.parseArray(raw);
+            List<String> out = new ArrayList<>();
+            for (JsonElement el : arr) {
+                if (el != null && el.isJsonPrimitive()) {
+                    String p = el.getAsString().trim();
+                    if (!p.isEmpty() && !out.contains(p)) {
+                        out.add(p);
+                    }
+                }
+            }
+            return out;
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
+
+    public static void setGuestWhitelistApplyAllowed(boolean allow) {
+        Map<String, Integer> levels = new LinkedHashMap<>(PermissionService.getGuestPermissionLevels());
+        levels.put("whitelist_apply", Integer.valueOf(allow ? PermissionLevel.FULL.getLevel() : PermissionLevel.DENY.getLevel()));
+        PermissionService.setRoleLevels(PermissionService.GUEST_ROLE_ID, levels);
+    }
+
+    public static boolean isServerOnlineMode() {
+        try {
+            GameAdapter adapter = AdapterRegistry.getAdapter();
+            if (adapter == null) return true;
+            ServerPropertiesSnapshot snap = adapter.getServerProperties();
+            if (snap != null) {
+                return snap.isOnlineMode();
+            }
+            Properties raw = ServerPropertiesReader.loadRawServerProperties(adapter.getServerDirectory());
+            return Boolean.parseBoolean(raw.getProperty("online-mode", "true"));
+        } catch (Throwable e) {
+            return true;
+        }
+    }
+
+    public static String getMapLayerVisibility(String layer) {
+        String raw = get("map_vis_" + layer, "readonly");
+        return "full".equalsIgnoreCase(raw) ? "full" : "readonly";
+    }
+
+    private static String normalizeVis(String key, String fallback) {
+        String raw = get(key, fallback);
+        if ("full".equalsIgnoreCase(raw)) return "full";
+        if ("readonly".equalsIgnoreCase(raw)) return "readonly";
+        return fallback;
+    }
+
+    public static Map<String, String> getMapLayerVisibility() {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("terrain", normalizeVis("map_vis_terrain", "readonly"));
+        m.put("netherCeiling", normalizeVis("map_vis_nether_ceiling", "readonly"));
+        m.put("grid", normalizeVis("map_vis_grid", "readonly"));
+        m.put("coordinates", normalizeVis("map_vis_coordinates", "readonly"));
+        m.put("waterDepth", normalizeVis("map_vis_water_depth", "readonly"));
+        m.put("heightShading", normalizeVis("map_vis_height_shading", "readonly"));
+        m.put("biomeTint", normalizeVis("map_vis_biome_tint", "readonly"));
+        m.put("players", normalizeVis("map_vis_players", "readonly"));
+        m.put("waypoints", normalizeVis("map_vis_waypoints", "readonly"));
+        m.put("mobsHostile", normalizeVis("map_vis_mobs_hostile", "full"));
+        m.put("mobsPassive", normalizeVis("map_vis_mobs_passive", "full"));
+        m.put("entities", normalizeVis("map_vis_entities", "full"));
+        m.put("structures", normalizeVis("map_vis_structures", "full"));
+        m.put("teleport", normalizeVis("map_vis_teleport", "full"));
+        return m;
+    }
+
+    public static boolean isWebChatSendEnabled() {
+        return getBool("chat_sync_enabled", true) && getBool("web_chat_send_enabled", true);
+    }
+
+    public static String getString(String key, String fallback) {
+        return get(key, fallback);
     }
 
     /**
@@ -210,10 +462,13 @@ public final class SettingsService {
         out.put("siteDescription", get("site_description", ""));
         out.put("baseUrl", getBaseUrl());
         out.put("defaultLocale", getDefaultLocale());
+        out.put("hasCustomFavicon", Boolean.valueOf(hasCustomFavicon()));
+        out.put("faviconVersion", getFaviconVersion());
+        out.put("faviconUrl", getFaviconUrl());
 
         out.put("allowRegistration", isAllowRegistration());
         out.put("defaultRegisterRoleId", getDefaultRegisterRoleId());
-        out.put("requireEmailVerification", getBool("require_email_verification", false));
+        out.put("requireEmailVerification", Boolean.valueOf(isRequireEmailVerification()));
         out.put("requireBindingOnRegister", isRequireBindingOnRegister());
         out.put("forcePlayerBinding", isForcePlayerBinding());
 
@@ -237,6 +492,45 @@ public final class SettingsService {
         out.put("monitorInterval", MonitorConfigService.getIntervalSeconds());
         out.put("monitorRetentionDays", MonitorConfigService.getRetentionDays());
         out.put("monitorShowPlayerNames", MonitorConfigService.isShowPlayerNames());
+
+        // Map settings
+        Map<String, String> mapVis = getMapLayerVisibility();
+        out.put("mapEnabled", Boolean.valueOf(isMapEnabled()));
+        out.put("mapRenderMode", get("map_render_mode", "hybrid"));
+        out.put("mapMaxChunksPerTick", Integer.valueOf(getInt("map_max_chunks_per_tick", 2)));
+        out.put("mapCacheMaxMb", Integer.valueOf(getInt("map_cache_max_mb", 512)));
+        out.put("mapVisTerrain", mapVis.get("terrain"));
+        out.put("mapVisNetherCeiling", mapVis.get("netherCeiling"));
+        out.put("mapVisGrid", mapVis.get("grid"));
+        out.put("mapVisCoordinates", mapVis.get("coordinates"));
+        out.put("mapVisWaterDepth", mapVis.get("waterDepth"));
+        out.put("mapVisHeightShading", mapVis.get("heightShading"));
+        out.put("mapVisBiomeTint", mapVis.get("biomeTint"));
+        out.put("mapVisPlayers", mapVis.get("players"));
+        out.put("mapVisWaypoints", mapVis.get("waypoints"));
+        out.put("mapVisMobsHostile", mapVis.get("mobsHostile"));
+        out.put("mapVisMobsPassive", mapVis.get("mobsPassive"));
+        out.put("mapVisEntities", mapVis.get("entities"));
+        out.put("mapVisStructures", mapVis.get("structures"));
+        out.put("mapVisTeleport", mapVis.get("teleport"));
+
+        // Whitelist management & review
+        out.put("serverWhitelistEnabled", Boolean.valueOf(isServerWhitelistEnabled()));
+        out.put("whitelistManagementEnabled", Boolean.valueOf(isWhitelistManagementEnabled()));
+        out.put("whitelistFeatureVisible", Boolean.valueOf(isWhitelistFeatureVisible()));
+        out.put("whitelistAllowGuest", Boolean.valueOf(PermissionService.guestMeetsRequirement("whitelist_apply:2")));
+        out.put("whitelistApplyCooldownSec", Integer.valueOf(getInt("whitelist_apply_cooldown_sec", 60)));
+        out.put("whitelistMaxPendingPerIp", Integer.valueOf(getInt("whitelist_max_pending_per_ip", 5)));
+        out.put("whitelistSendEmail", Boolean.valueOf(isWhitelistSendEmail()));
+        out.put("whitelistSocialRequired", Boolean.valueOf(isWhitelistSocialRequired()));
+        out.put("whitelistRequiredSocialPlatforms", getWhitelistRequiredSocialPlatforms());
+
+        // Restart & chat
+        out.put("serverRestartCommand", get("server_restart_command", ""));
+        out.put("serverRestartHint", get("server_restart_hint", ""));
+        out.put("chatSyncEnabled", Boolean.valueOf(getBool("chat_sync_enabled", true)));
+        out.put("webChatSendEnabled", Boolean.valueOf(getBool("web_chat_send_enabled", true)));
+        out.put("chatRetentionDays", Integer.valueOf(getInt("chat_retention_days", 30)));
         return out;
     }
 }

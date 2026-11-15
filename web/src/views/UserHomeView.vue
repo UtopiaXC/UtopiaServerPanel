@@ -17,14 +17,24 @@
       <n-gi>
         <n-card size="small" :title="$t('home.boundPlayer')" style="border-radius: 12px; height: 100%;">
           <template #header-extra>
-            <n-tag
-              v-if="playerData"
-              size="small"
-              :bordered="false"
-              :type="playerData.online ? 'success' : 'default'"
-            >
-              {{ playerData.online ? $t('home.playerOnline') : $t('home.playerOffline') }}
-            </n-tag>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <n-select
+                v-if="boundPlayers.length > 1"
+                v-model:value="selectedPlayerUuid"
+                :options="boundPlayerOptions"
+                size="tiny"
+                style="min-width: 140px;"
+                @update:value="loadPlayerTelemetry"
+              />
+              <n-tag
+                v-if="playerData"
+                size="small"
+                :bordered="false"
+                :type="playerData.online ? 'success' : 'default'"
+              >
+                {{ playerData.online ? $t('home.playerOnline') : $t('home.playerOffline') }}
+              </n-tag>
+            </div>
           </template>
 
           <n-spin :show="loadingPlayer">
@@ -176,7 +186,34 @@ function updateMobile() {
 
 const loadingPlayer = ref(false)
 const playerData = ref<any>(null)
+const selectedPlayerUuid = ref('')
 const history = ref<LoginHistoryItem[]>([])
+
+const boundPlayers = computed(() => authStore.user?.boundPlayers || [])
+const boundPlayerOptions = computed(() =>
+  boundPlayers.value.map((p) => ({
+    label: p.primary ? `${p.playerName} (${t('settings.primaryPlayer')})` : p.playerName,
+    value: p.playerUuid
+  }))
+)
+
+async function loadPlayerTelemetry(uuid?: string) {
+  if (!authStore.user?.bound) return
+  loadingPlayer.value = true
+  try {
+    const p = await bindingApi.getMyPlayer(uuid || undefined)
+    if (p && p.bound !== false) {
+      playerData.value = p
+      if (p.playerUuid && !selectedPlayerUuid.value) {
+        selectedPlayerUuid.value = p.playerUuid
+      }
+    }
+  } catch {
+    // ignore
+  } finally {
+    loadingPlayer.value = false
+  }
+}
 
 const catalog = computed<PermissionDef[]>(() => {
   if (siteStore.permissionsCatalog.length > 0) return siteStore.permissionsCatalog
@@ -227,17 +264,9 @@ onMounted(async () => {
   await siteStore.ensureLoaded()
 
   if (authStore.user?.bound) {
-    loadingPlayer.value = true
-    try {
-      const p = await bindingApi.getMyPlayer()
-      if (p && p.bound !== false) {
-        playerData.value = p
-      }
-    } catch {
-      // ignore
-    } finally {
-      loadingPlayer.value = false
-    }
+    const primary = boundPlayers.value.find((p) => p.primary) || boundPlayers.value[0]
+    selectedPlayerUuid.value = primary?.playerUuid || authStore.user?.playerUuid || ''
+    await loadPlayerTelemetry(selectedPlayerUuid.value)
   }
 
   try {

@@ -16,6 +16,9 @@ export interface SiteInfo {
   siteDescription: string
   baseUrl: string
   defaultLocale: string
+  hasCustomFavicon?: boolean
+  faviconVersion?: string
+  faviconUrl?: string
   allowRegistration: boolean
   requireEmailVerification: boolean
   requireBindingOnRegister: boolean
@@ -26,6 +29,14 @@ export interface SiteInfo {
   guestPermissions: Record<string, number>
   permissionsCatalog: PermissionDef[]
   monitorShowPlayerNames: boolean
+  whitelistFeatureVisible?: boolean
+  serverWhitelistEnabled?: boolean
+  whitelistManagementEnabled?: boolean
+  whitelistAllowGuest?: boolean
+  whitelistSocialRequired?: boolean
+  whitelistRequiredSocialPlatforms?: string[]
+  mapEnabled?: boolean
+  webChatSendEnabled?: boolean
 }
 
 export interface LoginPayload {
@@ -51,6 +62,14 @@ export const authApi = {
   getSiteInfo: () => unwrap<SiteInfo>(api.get('/site')),
   getCaptchaChallenge: () => unwrap<PowChallenge>(api.get('/captcha/challenge')),
   login: (payload: LoginPayload) => unwrap<any>(api.post('/auth/login', payload)),
+  passkeyLoginOptions: (username?: string) =>
+    unwrap<{ challengeId: string; publicKey: any }>(api.post('/auth/passkey/login/options', username ? { username } : {})),
+  passkeyLoginVerify: (payload: { challengeId: string; credential: any; rememberMe?: boolean }) =>
+    unwrap<any>(api.post('/auth/passkey/login/verify', payload)),
+  passkeyMfaOptions: (mfaToken: string) =>
+    unwrap<{ challengeId: string; publicKey: any }>(api.post('/auth/mfa/passkey/options', { mfaToken })),
+  passkeyMfaVerify: (payload: { challengeId: string; mfaToken: string; credential: any }) =>
+    unwrap<any>(api.post('/auth/mfa/passkey/verify', payload)),
   register: (payload: RegisterPayload) =>
     unwrap<{ message: string; activationRequired: boolean }>(api.post('/auth/register', payload)),
   activate: (token: string) => unwrap<{ message: string }>(api.post('/auth/activate', { token })),

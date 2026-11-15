@@ -45,6 +45,9 @@ public final class AuthController {
                 challenge.put("mfaRequired", Boolean.valueOf(res.mfaRequired()));
                 challenge.put("setup2faRequired", Boolean.valueOf(res.setup2faRequired()));
                 challenge.put("mfaToken", res.mfaToken());
+                if (res.available2faMethods() != null) {
+                    challenge.put("available2faMethods", res.available2faMethods());
+                }
                 ResponseHelper.sendOk(ctx, challenge);
                 return;
             }

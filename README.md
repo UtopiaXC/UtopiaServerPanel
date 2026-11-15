@@ -13,6 +13,7 @@ Utopia Server Panel embeds a self-contained Web UI, real-time console, server mo
 Choose the `.jar` matching your Minecraft version and mod loader from the release build matrix. Every build is a single standalone mod file with no external database or runtime dependencies required.
 
 ## Supported Platforms
+**Notice：** ONLY 1.7.10, 1.12.2, 1.16.5, 1.21.1 AND 26.3 HAS DONE LOCAL SMOKE TESTING, IF YOU ARE USING OTHER VERSIONS, PLEASE USE IT CAREFULLY.  
 
 | Platform | Minecraft Versions | Java |
 | --- | --- | --- |
@@ -22,11 +23,13 @@ Choose the `.jar` matching your Minecraft version and mod loader from the releas
 
 ## Features
 
-- **Server Overview & Monitoring**: Live TPS, MSPT, memory, CPU, disk, and online player status with historical metrics.
-- **Real-Time Web Console**: Live server log streaming, command execution, and Tab completion over WebSocket.
-- **Role-Based Access Control**: Granular module permissions (`none`, `read`, `full`), custom roles, and API tokens.
-- **Account Security & Recovery**: JWT sessions, PoW captcha, TOTP two-factor authentication, SMTP verification, and `/usp` in-game account binding and recovery.
-- **Responsive Theme UI**: Light and dark mode with bilingual English / Chinese interface.
+- **Multi-User, Role Control & Player Binding**: Multi-user accounts, role-based access control, and multi-character in-game player binding.
+- **Web Console**: Real-time browser command execution with Tab completion.
+- **Server Logs & Real-Time Monitoring**: Live log streaming alongside TPS, MSPT, system resource, online player, and historical metrics.
+- **Web Minimap**: Interactive multi-dimension browser map with live terrain, online players, and waypoints.
+- **Whitelist Management**: Online whitelist applications, review workflow, and server whitelist administration.
+- **Site Messages & In-Game Chat Sync**: Bidirectional sync between the web chat room and in-game chat, with site messaging.
+- **Mod & Server Config Editor**: Browse installed mods and edit `server.properties` and mod configuration files online.
 
 ## Quick Start
 

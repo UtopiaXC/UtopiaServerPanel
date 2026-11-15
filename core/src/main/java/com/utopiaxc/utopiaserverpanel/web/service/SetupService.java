@@ -1,6 +1,7 @@
 package com.utopiaxc.utopiaserverpanel.web.service;
 
 import com.utopiaxc.utopiaserverpanel.auth.PasswordUtil;
+import com.utopiaxc.utopiaserverpanel.auth.UsernamePolicy;
 import com.utopiaxc.utopiaserverpanel.config.PanelConfig;
 import com.utopiaxc.utopiaserverpanel.logging.PanelLog;
 import com.utopiaxc.utopiaserverpanel.web.db.MyBatisFactory;
@@ -181,8 +182,9 @@ public final class SetupService {
         if (!verifyToken(clientIp, req.token())) {
             return new SetupResult(false, "INVALID_SETUP_TOKEN", "Invalid setup token");
         }
-        if (req.adminUsername() == null || !req.adminUsername().trim().matches("^[a-zA-Z0-9_]{3,32}$")) {
-            return new SetupResult(false, "INVALID_USERNAME", "Username must be 3-32 alphanumeric or underscore characters");
+        UsernamePolicy.ValidationResult userCheck = UsernamePolicy.validate(req.adminUsername());
+        if (!userCheck.isValid()) {
+            return new SetupResult(false, userCheck.getErrorCode(), userCheck.getMessage());
         }
         if (req.adminPassword() == null || req.adminPassword().length() < 6) {
             return new SetupResult(false, "WEAK_PASSWORD", "Password must be at least 6 characters");

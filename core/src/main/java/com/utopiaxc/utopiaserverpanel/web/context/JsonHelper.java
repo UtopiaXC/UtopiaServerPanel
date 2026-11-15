@@ -1,6 +1,7 @@
 package com.utopiaxc.utopiaserverpanel.web.context;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
@@ -16,6 +17,23 @@ public final class JsonHelper {
         if (raw == null || raw.trim().isEmpty()) return new JsonObject();
         JsonObject obj = GSON.fromJson(raw, JsonObject.class);
         return obj != null ? obj : new JsonObject();
+    }
+
+    public static JsonArray parseArray(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return new JsonArray();
+        JsonArray arr = GSON.fromJson(raw, JsonArray.class);
+        return arr != null ? arr : new JsonArray();
+    }
+
+    public static String toJson(Object value) {
+        return GSON.toJson(value);
+    }
+
+    public static JsonObject obj(JsonObject obj, String key) {
+        if (obj == null || !obj.has(key) || obj.get(key).isJsonNull() || !obj.get(key).isJsonObject()) {
+            return null;
+        }
+        return obj.getAsJsonObject(key);
     }
 
     public static String str(JsonObject obj, String key) {

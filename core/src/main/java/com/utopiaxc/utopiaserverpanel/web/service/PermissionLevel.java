@@ -14,7 +14,10 @@ public enum PermissionLevel {
     FULL(2, "full");
 
     public static final List<String> DEFAULT_PERMISSION_KEYS = Collections.unmodifiableList(
-            Arrays.asList("admin", "dashboard", "terminal", "logs"));
+            Arrays.asList(
+                    "admin", "dashboard", "terminal", "logs",
+                    "map", "profiler", "mods_config", "whitelist_apply", "whitelist_manage"
+            ));
 
     private final int level;
     private final String label;

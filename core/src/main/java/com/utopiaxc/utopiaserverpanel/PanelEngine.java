@@ -11,7 +11,10 @@ import com.utopiaxc.utopiaserverpanel.spi.map.MapIntegrationRegistry;
 import com.utopiaxc.utopiaserverpanel.system.SystemMonitor;
 import com.utopiaxc.utopiaserverpanel.system.SystemTelemetryProvider;
 import com.utopiaxc.utopiaserverpanel.web.WebServer;
+import com.utopiaxc.utopiaserverpanel.web.service.MessageService;
 import com.utopiaxc.utopiaserverpanel.web.service.PlayerEventTracker;
+import com.utopiaxc.utopiaserverpanel.web.service.ProfilerService;
+import com.utopiaxc.utopiaserverpanel.web.service.map.MapService;
 
 import java.nio.file.Path;
 
@@ -59,10 +62,28 @@ public final class PanelEngine {
 
     public static void onPlayerJoin(String playerName, String playerUuid) {
         PlayerEventTracker.getInstance().onPlayerJoin(playerName, playerUuid);
+        MessageService.handlePlayerJoin(playerName, playerUuid);
     }
 
     public static void onPlayerLeave(String playerName, String playerUuid) {
         PlayerEventTracker.getInstance().onPlayerLeave(playerName, playerUuid);
+    }
+
+    public static void onChatMessage(String playerUuid, String playerName, String content) {
+        MessageService.recordInGameChat(playerUuid, playerName, "public", null, content);
+    }
+
+    public static void onWhisperMessage(String senderUuid, String senderName, String recipientName, String content) {
+        MessageService.recordInGameChat(senderUuid, senderName, "whisper", recipientName, content);
+    }
+
+    public static void onChunkDirty(String dimension, int chunkX, int chunkZ) {
+        MapService.markChunkDirty(dimension, chunkX, chunkZ);
+    }
+
+    public static void onServerTick(long totalNs, long worldNs, long entityNs, long blockEntityNs) {
+        ProfilerService.recordTickTiming(totalNs, worldNs, entityNs, blockEntityNs);
+        MapService.onServerTickBudgeted();
     }
 }
 

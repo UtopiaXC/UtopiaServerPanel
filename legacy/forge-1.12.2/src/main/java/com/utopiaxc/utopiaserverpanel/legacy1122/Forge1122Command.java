@@ -33,7 +33,7 @@ public final class Forge1122Command extends CommandBase {
 
     @Override
     public String getUsage(ICommandSender sender) {
-        return "/usp <bind|unbind|setup token|recover <password|2fa>>";
+        return "/usp <bind|unbind|setup token|recover <password|2fa>|msg <target> <text>|inbox>";
     }
 
     @Override
@@ -63,6 +63,15 @@ public final class Forge1122Command extends CommandBase {
             outcome = PanelEngine.commands().executeSetupToken(caller);
         } else if ("recover".equals(sub) && args.length >= 2) {
             outcome = PanelEngine.commands().executeRecover(caller, args[1].toLowerCase(Locale.ROOT));
+        } else if ("inbox".equals(sub)) {
+            outcome = PanelEngine.commands().executeInbox(caller);
+        } else if (("msg".equals(sub) || "mail".equals(sub)) && args.length >= 3) {
+            StringBuilder msgBuilder = new StringBuilder();
+            for (int i = 2; i < args.length; i++) {
+                if (i > 2) msgBuilder.append(' ');
+                msgBuilder.append(args[i]);
+            }
+            outcome = PanelEngine.commands().executeSendMessage(caller, args[1], msgBuilder.toString());
         } else {
             outcome = CommandOutcome.fail(getUsage(sender));
         }
@@ -78,7 +87,7 @@ public final class Forge1122Command extends CommandBase {
             BlockPos targetPos
     ) {
         if (args.length == 1) {
-            return getListOfStringsMatchingLastWord(args, "bind", "unbind", "setup", "recover");
+            return getListOfStringsMatchingLastWord(args, "bind", "unbind", "setup", "recover", "msg", "mail", "inbox");
         }
         if (args.length == 2 && "setup".equalsIgnoreCase(args[0])) {
             return getListOfStringsMatchingLastWord(args, "token");

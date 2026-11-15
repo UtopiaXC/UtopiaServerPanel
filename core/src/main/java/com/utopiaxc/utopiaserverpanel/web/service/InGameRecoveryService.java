@@ -2,6 +2,7 @@ package com.utopiaxc.utopiaserverpanel.web.service;
 
 import com.utopiaxc.utopiaserverpanel.auth.PasswordUtil;
 import com.utopiaxc.utopiaserverpanel.web.db.MyBatisFactory;
+import com.utopiaxc.utopiaserverpanel.web.db.mapper.PasskeyMapper;
 import com.utopiaxc.utopiaserverpanel.web.db.mapper.PlayerBindingMapper;
 import com.utopiaxc.utopiaserverpanel.web.db.mapper.SecurityMapper;
 import com.utopiaxc.utopiaserverpanel.web.db.model.PlayerBindingInfo;
@@ -46,7 +47,8 @@ public final class InGameRecoveryService {
             SecurityMapper secMapper = session.getMapper(SecurityMapper.class);
             if ("2fa".equals(tokenType)) {
                 UserTotp totp = secMapper.findTotpByUserId(binding.getUserId());
-                if (totp == null || !totp.isEnabled()) {
+                int pkCount = session.getMapper(PasskeyMapper.class).countByUserId(binding.getUserId());
+                if ((totp == null || !totp.isEnabled()) && pkCount <= 0) {
                     return new InGameRecoveryResult(false, "TWO_FA_NOT_ENABLED", null);
                 }
             }

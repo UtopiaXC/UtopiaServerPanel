@@ -1,3 +1,4 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import xyz.wagyourtail.unimined.api.minecraft.task.RemapJarTask
 
 plugins {
@@ -66,8 +67,17 @@ configurations {
     }
 }
 
+def devShadedCore = tasks.register('devShadedCore', ShadowJar) {
+    configurations = [project.configurations.shade]
+    archiveClassifier = 'dev-core'
+    destinationDirectory = layout.buildDirectory.dir('dev-libs')
+    configureUspShadowRules(it, targetMeta)
+}
+
 dependencies {
-    implementation 'com.utopiaxc.utopiaserverpanel:core'
+    compileOnly 'com.utopiaxc.utopiaserverpanel:core'
+    testImplementation 'com.utopiaxc.utopiaserverpanel:core'
+    runtimeOnly files(devShadedCore)
     shade 'com.utopiaxc.utopiaserverpanel:core'
 
     // 1.12.2 bundles Netty 4.1.9.Final (lacks WebSocketServerProtocolConfig) and has no SLF4J

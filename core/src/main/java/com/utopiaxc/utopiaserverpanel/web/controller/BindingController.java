@@ -16,6 +16,18 @@ public final class BindingController {
 
     private BindingController() {}
 
+    /** GET /api/binding/list */
+    public static void list(RequestContext ctx) {
+        Integer userId = (Integer) ctx.getAttribute("userId");
+        if (userId == null) {
+            ResponseHelper.sendError(ctx, HttpResponseStatus.UNAUTHORIZED, "UNAUTHORIZED", "Authentication required");
+            return;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("boundPlayers", BindingService.listByUserId(userId.intValue()));
+        ResponseHelper.sendOk(ctx, out);
+    }
+
     /** POST /api/binding/bind */
     public static void bind(RequestContext ctx) {
         Integer userId = (Integer) ctx.getAttribute("userId");
@@ -32,9 +44,33 @@ public final class BindingController {
                 out.put("message", res.message());
                 out.put("playerName", res.playerName());
                 out.put("playerUuid", res.playerUuid());
+                out.put("boundPlayers", BindingService.listByUserId(userId.intValue()));
                 ResponseHelper.sendOk(ctx, out);
             } else {
                 ResponseHelper.sendError(ctx, HttpResponseStatus.BAD_REQUEST, res.errorCode(), res.message());
+            }
+        } catch (Exception e) {
+            ResponseHelper.sendError(ctx, HttpResponseStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request body");
+        }
+    }
+
+    /** POST /api/binding/primary */
+    public static void setPrimary(RequestContext ctx) {
+        Integer userId = (Integer) ctx.getAttribute("userId");
+        if (userId == null) {
+            ResponseHelper.sendError(ctx, HttpResponseStatus.UNAUTHORIZED, "UNAUTHORIZED", "Authentication required");
+            return;
+        }
+        try {
+            JsonObject body = JsonHelper.parseObject(ctx.body());
+            String playerUuid = JsonHelper.str(body, "playerUuid");
+            if (BindingService.setPrimary(userId.intValue(), playerUuid)) {
+                Map<String, Object> out = new LinkedHashMap<>();
+                out.put("message", "Primary player updated");
+                out.put("boundPlayers", BindingService.listByUserId(userId.intValue()));
+                ResponseHelper.sendOk(ctx, out);
+            } else {
+                ResponseHelper.sendError(ctx, HttpResponseStatus.BAD_REQUEST, "NOT_FOUND", "Bound player not found");
             }
         } catch (Exception e) {
             ResponseHelper.sendError(ctx, HttpResponseStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request body");
@@ -51,6 +87,7 @@ public final class BindingController {
         try {
             JsonObject body = JsonHelper.parseObject(ctx.body());
             Integer requestedTarget = JsonHelper.intObj(body, "userId");
+            String playerUuid = JsonHelper.str(body, "playerUuid");
             int targetUserId = currentUserId.intValue();
             if (requestedTarget != null && requestedTarget.intValue() != currentUserId.intValue()) {
                 if (!PermissionService.meetsRequirement(currentUserId.intValue(), "admin:2")) {
@@ -59,10 +96,16 @@ public final class BindingController {
                 }
                 targetUserId = requestedTarget.intValue();
             }
-            if (BindingService.unbindByUserId(targetUserId)) {
-                ResponseHelper.sendOk(ctx, Collections.singletonMap("message", "Unbound successfully"));
+            boolean ok = (playerUuid != null && !playerUuid.trim().isEmpty())
+                    ? BindingService.unbindByUserAndUuid(targetUserId, playerUuid.trim())
+                    : BindingService.unbindByUserId(targetUserId);
+            if (ok) {
+                Map<String, Object> out = new LinkedHashMap<>();
+                out.put("message", "Unbound successfully");
+                out.put("boundPlayers", BindingService.listByUserId(targetUserId));
+                ResponseHelper.sendOk(ctx, out);
             } else {
-                ResponseHelper.sendError(ctx, HttpResponseStatus.BAD_REQUEST, "NOT_BOUND", "User is not bound to a player");
+                ResponseHelper.sendError(ctx, HttpResponseStatus.BAD_REQUEST, "NOT_BOUND", "User is not bound to that player");
             }
         } catch (Exception e) {
             ResponseHelper.sendError(ctx, HttpResponseStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request body");

@@ -1,3 +1,5 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+
 plugins {
     id 'java'
     id 'com.gtnewhorizons.retrofuturagradle' version '2.0.6'
@@ -60,8 +62,17 @@ afterEvaluate {
     )
 }
 
+def devShadedCore = tasks.register('devShadedCore', ShadowJar) {
+    configurations = [project.configurations.shade]
+    archiveClassifier = 'dev-core'
+    destinationDirectory = layout.buildDirectory.dir('dev-libs')
+    configureUspShadowRules(it, targetMeta)
+}
+
 dependencies {
-    implementation 'com.utopiaxc.utopiaserverpanel:core'
+    compileOnly 'com.utopiaxc.utopiaserverpanel:core'
+    testImplementation 'com.utopiaxc.utopiaserverpanel:core'
+    runtimeOnly files(devShadedCore)
     shade 'com.utopiaxc.utopiaserverpanel:core'
 
     // Legacy 1.7.10 bundles Netty 4.0.10 and has no SLF4J at runtime

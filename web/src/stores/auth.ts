@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { authApi, type LoginPayload } from '../api/auth'
-import { profileApi } from '../api/profile'
+import { profileApi, type ProfilePrivacyConfig, type SocialAccountItem } from '../api/profile'
 import {
   clearStoredTokens,
   getStoredAccessToken,
@@ -11,6 +11,15 @@ import {
 import { reauthenticateWs } from '../composables/useWebSocket'
 import { useSiteStore } from './site'
 import { setAppLocale } from '../i18n'
+
+export interface BoundPlayerProfile {
+  id?: number
+  userId?: number
+  playerUuid: string
+  playerName: string
+  primary?: boolean
+  boundAt: number
+}
 
 export interface UserProfile {
   id: number
@@ -24,12 +33,22 @@ export interface UserProfile {
   mustChangePassword: boolean
   require2fa: boolean
   totpEnabled: boolean
+  passkeyCount?: number
+  twoFactorEnabled?: boolean
   bound: boolean
   playerUuid: string | null
   playerName: string | null
   boundAt: number | null
+  boundPlayers?: BoundPlayerProfile[]
+  boundCount?: number
   locale: string
   createdAt: number
+  avatarData?: string
+  gender?: string
+  birthday?: string
+  bio?: string
+  socialAccounts?: SocialAccountItem[]
+  privacy?: ProfilePrivacyConfig
   permissions: Record<string, number>
   needsBinding: boolean
   needs2fa: boolean
@@ -148,15 +167,23 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(payload: LoginPayload): Promise<
     | { status: 'ok' }
-    | { status: 'mfa'; mfaToken: string }
-    | { status: 'setup2fa'; mfaToken: string }
+    | { status: 'mfa'; mfaToken: string; available2faMethods?: string[] }
+    | { status: 'setup2fa'; mfaToken: string; available2faMethods?: string[] }
   > {
     const res = await authApi.login(payload)
     if (res?.mfaRequired && res?.mfaToken) {
-      return { status: 'mfa', mfaToken: res.mfaToken }
+      return {
+        status: 'mfa',
+        mfaToken: res.mfaToken,
+        available2faMethods: Array.isArray(res.available2faMethods) ? res.available2faMethods : ['totp']
+      }
     }
     if (res?.setup2faRequired && res?.mfaToken) {
-      return { status: 'setup2fa', mfaToken: res.mfaToken }
+      return {
+        status: 'setup2fa',
+        mfaToken: res.mfaToken,
+        available2faMethods: Array.isArray(res.available2faMethods) ? res.available2faMethods : ['totp', 'passkey']
+      }
     }
     applySessionPayload(res)
     initialized.value = true

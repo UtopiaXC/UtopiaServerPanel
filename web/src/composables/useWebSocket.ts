@@ -197,6 +197,18 @@ function openSocket() {
             playerEventListeners.forEach((cb) => cb(msg.data))
           }
           break
+
+        case 'ingame_chat':
+          if (msg.data) {
+            ingameChatListeners.forEach((cb) => cb(msg.data))
+          }
+          break
+
+        case 'inbox_notification':
+          if (msg.data) {
+            inboxListeners.forEach((cb) => cb(msg.data))
+          }
+          break
       }
     } catch {
       // ignore malformed messages
@@ -258,6 +270,9 @@ export function releaseWebSocket() {
   }
 }
 
+const ingameChatListeners = new Set<MonitorCallback>()
+const inboxListeners = new Set<MonitorCallback>()
+
 export function useWebSocket() {
   return {
     connected,
@@ -281,6 +296,14 @@ export function useWebSocket() {
     onPlayerEvent: (cb: MonitorCallback) => {
       playerEventListeners.add(cb)
       return () => playerEventListeners.delete(cb)
+    },
+    onInGameChat: (cb: MonitorCallback) => {
+      ingameChatListeners.add(cb)
+      return () => ingameChatListeners.delete(cb)
+    },
+    onInboxNotification: (cb: MonitorCallback) => {
+      inboxListeners.add(cb)
+      return () => inboxListeners.delete(cb)
     }
   }
 }

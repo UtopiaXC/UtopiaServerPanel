@@ -177,6 +177,13 @@ import {
   SpeedometerOutline,
   TerminalOutline,
   AnalyticsOutline,
+  MapOutline,
+  PulseOutline,
+  CubeOutline,
+  MailOutline,
+  CheckmarkDoneOutline,
+  PersonAddOutline,
+  PersonOutline,
   HomeOutline,
   KeyOutline,
   SettingsOutline,
@@ -190,17 +197,21 @@ import ThemeSwitcher from '../components/ThemeSwitcher.vue'
 import LanguageSelector from '../components/LanguageSelector.vue'
 import { useSiteStore } from '../stores/site'
 import { useAuthStore } from '../stores/auth'
-import { retainWebSocket, releaseWebSocket } from '../composables/useWebSocket'
+import { messagesApi } from '../api/messages'
+import { retainWebSocket, releaseWebSocket, useWebSocket } from '../composables/useWebSocket'
 
 const router = useRouter()
 const route = useRoute()
 const { t } = useI18n()
 const siteStore = useSiteStore()
 const authStore = useAuthStore()
+const ws = useWebSocket()
 
 const collapsed = ref(false)
 const isMobile = ref(false)
 const showMobileDrawer = ref(false)
+const unreadMessages = ref(0)
+let offInboxNotify: (() => void) | null = null
 
 function handleResize() {
   isMobile.value = window.innerWidth <= 768
@@ -217,12 +228,21 @@ const currentTitle = computed(() => {
     '/dsh/overview': t('nav.dashboard'),
     '/dsh/terminal': t('nav.terminal'),
     '/dsh/logs': t('nav.logs'),
+    '/map': t('nav.map'),
+    '/profiler': t('nav.profiler'),
+    '/mods': t('nav.mods'),
+    '/messages': t('nav.messages'),
+    '/whitelist/manage': t('nav.whitelistManage'),
+    '/whitelist/apply': t('nav.whitelistApply'),
     '/home': t('nav.home'),
     '/tokens': t('nav.tokens'),
     '/settings': t('nav.settings'),
     '/admin/users': t('nav.adminUsers'),
     '/admin/roles': t('nav.adminRoles'),
     '/admin/settings': t('nav.adminSettings')
+  }
+  if (route.name === 'playerProfile') {
+    return t('nav.playerProfile')
   }
   return map[route.path] || siteStore.siteName
 })
@@ -251,6 +271,27 @@ const menuOptions = computed<MenuOption[]>(() => {
       icon: renderIcon(AnalyticsOutline)
     })
   }
+  if (siteStore.mapEnabled && authStore.hasPermission('map', 1)) {
+    items.push({
+      label: () => t('nav.map'),
+      key: '/map',
+      icon: renderIcon(MapOutline)
+    })
+  }
+  if (authStore.hasPermission('profiler', 1)) {
+    items.push({
+      label: () => t('nav.profiler'),
+      key: '/profiler',
+      icon: renderIcon(PulseOutline)
+    })
+  }
+  if (authStore.hasPermission('mods_config', 1)) {
+    items.push({
+      label: () => t('nav.mods'),
+      key: '/mods',
+      icon: renderIcon(CubeOutline)
+    })
+  }
 
   if (authStore.isLoggedIn) {
     if (items.length > 0) {
@@ -258,32 +299,78 @@ const menuOptions = computed<MenuOption[]>(() => {
     }
     items.push(
       { label: () => t('nav.home'), key: '/home', icon: renderIcon(HomeOutline) },
+      {
+        label: () => t('nav.playerProfile'),
+        key: `/${authStore.user?.username || ''}`,
+        icon: renderIcon(PersonOutline)
+      },
+      {
+        label: () =>
+          unreadMessages.value > 0
+            ? `${t('nav.messages')} (${unreadMessages.value})`
+            : t('nav.messages'),
+        key: '/messages',
+        icon: renderIcon(MailOutline)
+      },
       { label: () => t('nav.tokens'), key: '/tokens', icon: renderIcon(KeyOutline) },
       { label: () => t('nav.settings'), key: '/settings', icon: renderIcon(SettingsOutline) }
     )
   }
 
-  if (authStore.hasPermission('admin', 1)) {
+  if (siteStore.whitelistFeatureVisible && (!authStore.isLoggedIn || authStore.hasPermission('whitelist_apply', 2))) {
+    items.push({
+      label: () => t('nav.whitelistApply'),
+      key: '/whitelist/apply',
+      icon: renderIcon(PersonAddOutline)
+    })
+  }
+
+  if (
+    authStore.hasPermission('admin', 1) ||
+    (siteStore.whitelistFeatureVisible && authStore.hasPermission('whitelist_manage', 1))
+  ) {
     if (items.length > 0) {
       items.push({ type: 'divider', key: 'div-admin' })
     }
-    items.push(
-      { label: () => t('nav.adminUsers'), key: '/admin/users', icon: renderIcon(PeopleOutline) },
-      {
-        label: () => t('nav.adminRoles'),
-        key: '/admin/roles',
-        icon: renderIcon(ShieldCheckmarkOutline)
-      },
-      {
-        label: () => t('nav.adminSettings'),
-        key: '/admin/settings',
-        icon: renderIcon(OptionsOutline)
-      }
-    )
+    if (siteStore.whitelistFeatureVisible && authStore.hasPermission('whitelist_manage', 1)) {
+      items.push({
+        label: () => t('nav.whitelistManage'),
+        key: '/whitelist/manage',
+        icon: renderIcon(CheckmarkDoneOutline)
+      })
+    }
+    if (authStore.hasPermission('admin', 1)) {
+      items.push(
+        { label: () => t('nav.adminUsers'), key: '/admin/users', icon: renderIcon(PeopleOutline) },
+        {
+          label: () => t('nav.adminRoles'),
+          key: '/admin/roles',
+          icon: renderIcon(ShieldCheckmarkOutline)
+        },
+        {
+          label: () => t('nav.adminSettings'),
+          key: '/admin/settings',
+          icon: renderIcon(OptionsOutline)
+        }
+      )
+    }
   }
 
   return items
 })
+
+async function refreshUnreadCount() {
+  if (!authStore.isLoggedIn) {
+    unreadMessages.value = 0
+    return
+  }
+  try {
+    const res = await messagesApi.getUnreadCount()
+    unreadMessages.value = res.unreadCount || 0
+  } catch {
+    // ignore
+  }
+}
 
 function handleMenuSelect(key: string) {
   router.push(key)
@@ -298,11 +385,16 @@ onMounted(() => {
   handleResize()
   window.addEventListener('resize', handleResize)
   retainWebSocket()
+  refreshUnreadCount()
+  offInboxNotify = ws.onInboxNotification(() => {
+    refreshUnreadCount()
+  })
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
   releaseWebSocket()
+  if (offInboxNotify) offInboxNotify()
 })
 </script>
 

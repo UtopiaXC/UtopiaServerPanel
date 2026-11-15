@@ -2,6 +2,15 @@ import { api, unwrap } from './client'
 import type { PermissionDef } from './auth'
 import type { SmtpPayload } from './setup'
 
+export interface BoundPlayerItem {
+  id?: number
+  userId?: number
+  playerUuid: string
+  playerName: string
+  primary?: boolean
+  boundAt: number
+}
+
 export interface AdminUserItem {
   id: number
   username: string
@@ -14,12 +23,16 @@ export interface AdminUserItem {
   mustChangePassword: boolean
   require2fa: boolean
   totpEnabled: boolean
+  passkeyCount?: number
+  twoFactorEnabled?: boolean
   failedLoginAttempts: number
   lockoutUntil: number | null
   bound: boolean
   playerUuid: string | null
   playerName: string | null
   boundAt: number | null
+  boundPlayers?: BoundPlayerItem[]
+  boundCount?: number
   locale: string
   createdAt: number
   updatedAt: number
@@ -43,6 +56,9 @@ export interface AdminSettingsData {
   siteDescription: string
   baseUrl: string
   defaultLocale: string
+  hasCustomFavicon?: boolean
+  faviconVersion?: string
+  faviconUrl?: string
   allowRegistration: boolean
   defaultRegisterRoleId: number
   requireEmailVerification: boolean
@@ -66,6 +82,56 @@ export interface AdminSettingsData {
   monitorInterval: number
   monitorRetentionDays: number
   monitorShowPlayerNames: boolean
+
+  mapEnabled: boolean
+  mapRenderMode: string
+  mapMaxChunksPerTick: number
+  mapCacheMaxMb: number
+  mapVisTerrain: string
+  mapVisNetherCeiling: string
+  mapVisGrid: string
+  mapVisCoordinates: string
+  mapVisWaterDepth: string
+  mapVisHeightShading: string
+  mapVisBiomeTint: string
+  mapVisPlayers: string
+  mapVisWaypoints: string
+  mapVisMobsHostile: string
+  mapVisMobsPassive: string
+  mapVisEntities: string
+  mapVisStructures: string
+  mapVisTeleport: string
+
+  serverWhitelistEnabled?: boolean
+  whitelistManagementEnabled: boolean
+  whitelistFeatureVisible?: boolean
+  whitelistAllowGuest?: boolean
+  whitelistApplyCooldownSec: number
+  whitelistMaxPendingPerIp: number
+  whitelistSendEmail: boolean
+  whitelistSocialRequired: boolean
+  whitelistRequiredSocialPlatforms: string[]
+
+  serverRestartCommand: string
+  serverRestartHint: string
+
+  chatSyncEnabled: boolean
+  webChatSendEnabled: boolean
+  chatRetentionDays: number
+}
+
+export interface WorldOverviewItem {
+  worldName: string
+  folderName: string
+  worldPath: string
+  active: boolean
+  dbExists: boolean
+  dbSizeBytes: number
+  mapCacheBytes: number
+  userCount: number
+  waypointCount: number
+  whitelistPendingCount: number
+  messageCount: number
 }
 
 export const adminApi = {
@@ -104,7 +170,8 @@ export const adminApi = {
     }>
   ) => unwrap<AdminUserItem>(api.patch(`/admin/users/${id}`, data)),
   deleteUser: (id: number) => unwrap<{ message: string }>(api.delete(`/admin/users/${id}`)),
-  unbindUser: (id: number) => unwrap<{ message: string }>(api.post(`/admin/users/${id}/unbind`)),
+  unbindUser: (id: number, playerUuid?: string) =>
+    unwrap<{ message: string }>(api.post(`/admin/users/${id}/unbind`, playerUuid ? { playerUuid } : {})),
   resetUser2fa: (id: number) => unwrap<{ message: string }>(api.post(`/admin/users/${id}/reset-2fa`)),
   unlockUser: (id: number) => unwrap<{ message: string }>(api.post(`/admin/users/${id}/unlock`)),
 
@@ -133,7 +200,24 @@ export const adminApi = {
   getSettings: () => unwrap<AdminSettingsData>(api.get('/admin/settings')),
   updateSettings: (data: Partial<AdminSettingsData> & { smtpPassword?: string; clearSmtpPassword?: boolean }) =>
     unwrap<AdminSettingsData>(api.patch('/admin/settings', data)),
+  uploadFavicon: (dataUrl: string) =>
+    unwrap<{ hasCustomFavicon: boolean; faviconVersion: string; faviconUrl: string }>(
+      api.post('/admin/settings/favicon', { dataUrl })
+    ),
+  resetFavicon: () =>
+    unwrap<{ hasCustomFavicon: boolean; faviconVersion: string; faviconUrl: string }>(
+      api.delete('/admin/settings/favicon')
+    ),
+  toggleWhitelist: (enabled: boolean) =>
+    unwrap<{ serverWhitelistEnabled: boolean; whitelistManagementEnabled: boolean }>(
+      api.post('/admin/settings/whitelist-toggle', { enabled })
+    ),
+  toggleGuestWhitelist: (allow: boolean) =>
+    unwrap<{ whitelistAllowGuest: boolean; guestPermissions: Record<string, number> }>(
+      api.post('/admin/settings/whitelist-guest-toggle', { allow })
+    ),
   testSmtp: (cfg: Partial<SmtpPayload>) =>
-    unwrap<{ connected: boolean }>(api.post('/admin/settings/test-smtp', cfg))
+    unwrap<{ connected: boolean }>(api.post('/admin/settings/test-smtp', cfg)),
+  listWorlds: () => unwrap<{ worlds: WorldOverviewItem[] }>(api.get('/admin/worlds'))
 }
 

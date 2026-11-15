@@ -21,6 +21,8 @@ import java.util.List;
 public class WebSocketFrameHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
 
     public static final AttributeKey<Integer> USER_ID_ATTR = AttributeKey.valueOf("usp_ws_user_id");
+    public static final AttributeKey<String> AUTH_TOKEN_ATTR = AttributeKey.valueOf("usp_ws_auth_token");
+    public static final AttributeKey<String> API_SCOPES_ATTR = AttributeKey.valueOf("usp_ws_api_scopes");
     private static final ChannelGroup channels = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
 
     public static ChannelGroup getChannels() { return channels; }
@@ -32,9 +34,12 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<TextWebSo
             QueryStringDecoder decoder = new QueryStringDecoder(hc.requestUri());
             List<String> tokens = decoder.parameters().get("token");
             if (tokens != null && !tokens.isEmpty()) {
-                TokenAuthHelper.Principal principal = TokenAuthHelper.resolve(tokens.get(0));
+                String raw = tokens.get(0);
+                TokenAuthHelper.Principal principal = TokenAuthHelper.resolve(raw);
                 if (principal != null) {
                     ctx.channel().attr(USER_ID_ATTR).set(Integer.valueOf(principal.getUserId()));
+                    ctx.channel().attr(AUTH_TOKEN_ATTR).set(raw.trim());
+                    ctx.channel().attr(API_SCOPES_ATTR).set("api_token".equals(principal.getAuthType()) ? principal.getScopes() : "*");
                 }
             }
             channels.add(ctx.channel());

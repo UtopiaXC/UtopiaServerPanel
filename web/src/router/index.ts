@@ -98,6 +98,46 @@ const routes: RouteRecordRaw[] = [
   { path: '/:pathMatch(.*)*', redirect: '/' }
 ]
 
+const dashParent = routes.find((r) => Array.isArray(r.children) && r.children.length > 0)
+if (dashParent && dashParent.children) {
+  dashParent.children.push(
+    {
+      path: '/map',
+      component: () => import('../views/MapView.vue'),
+      meta: { module: 'map', minLevel: 1 }
+    },
+    {
+      path: '/profiler',
+      component: () => import('../views/ProfilerView.vue'),
+      meta: { module: 'profiler', minLevel: 1 }
+    },
+    {
+      path: '/mods',
+      component: () => import('../views/ModsConfigView.vue'),
+      meta: { module: 'mods_config', minLevel: 1 }
+    },
+    {
+      path: '/whitelist/apply',
+      component: () => import('../views/WhitelistApplyView.vue')
+    },
+    {
+      path: '/whitelist/manage',
+      component: () => import('../views/WhitelistManageView.vue'),
+      meta: { requiresAuth: true, module: 'whitelist_manage', minLevel: 1 }
+    },
+    {
+      path: '/messages',
+      component: () => import('../views/MessagesView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/:username',
+      name: 'playerProfile',
+      component: () => import('../views/PlayerProfileView.vue')
+    }
+  )
+}
+
 const router = createRouter({
   history: createWebHistory(),
   routes
@@ -107,6 +147,7 @@ function resolveDefaultRoute(authStore: ReturnType<typeof useAuthStore>): string
   if (authStore.hasPermission('dashboard', 1)) return '/dsh/overview'
   if (authStore.hasPermission('terminal', 1)) return '/dsh/terminal'
   if (authStore.hasPermission('logs', 1)) return '/dsh/logs'
+  if (authStore.hasPermission('map', 1)) return '/map'
   if (authStore.isLoggedIn) return '/home'
   return '/login'
 }

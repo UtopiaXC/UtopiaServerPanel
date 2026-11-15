@@ -248,4 +248,75 @@ public final class Forge1710GameAdapter implements GameAdapter {
     public boolean isModLoaded(String modId) {
         return modId != null && Loader.isModLoaded(modId);
     }
+
+    static String dimId(int dim) {
+        if (dim == 0) return "minecraft:overworld";
+        if (dim == -1) return "minecraft:the_nether";
+        if (dim == 1) return "minecraft:the_end";
+        return "dimension:" + dim;
+    }
+
+    @Override
+    public List<com.utopiaxc.utopiaserverpanel.spi.map.MapDimensionInfo> getMapDimensions() {
+        return Forge1710FeatureHelper.getMapDimensions(server);
+    }
+
+    @Override
+    public com.utopiaxc.utopiaserverpanel.spi.map.MapChunkRenderData captureLiveChunkForMap(String dimension, int chunkX, int chunkZ) {
+        return Forge1710FeatureHelper.captureLiveChunk(server, dimension, chunkX, chunkZ);
+    }
+
+    @Override
+    public List<com.utopiaxc.utopiaserverpanel.spi.map.MapMarkerDto> collectLiveMapMarkers(String dimension) {
+        try {
+            return java.util.concurrent.CompletableFuture.supplyAsync(
+                    () -> Forge1710FeatureHelper.collectLiveMarkers(server, dimension),
+                    this::runOnServerThread
+            ).get(1200L, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (Throwable t) {
+            return Collections.emptyList();
+        }
+    }
+
+    @Override
+    public com.utopiaxc.utopiaserverpanel.spi.profiler.ProfilerHotspotSnapshot collectHotspotSnapshot() {
+        try {
+            return java.util.concurrent.CompletableFuture.supplyAsync(
+                    () -> Forge1710FeatureHelper.collectHotspots(server),
+                    this::runOnServerThread
+            ).get(1500L, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (Throwable t) {
+            return new com.utopiaxc.utopiaserverpanel.spi.profiler.ProfilerHotspotSnapshot();
+        }
+    }
+
+    @Override
+    public List<com.utopiaxc.utopiaserverpanel.spi.mod.ModEntryDto> getLoadedMods() {
+        return Forge1710FeatureHelper.getLoadedMods();
+    }
+
+    @Override
+    public void broadcastPublicChat(String senderName, String message) {
+        if (message == null || message.trim().isEmpty()) return;
+        runOnServerThread(() -> Forge1710FeatureHelper.broadcastChat(
+                server, senderName != null ? senderName : "Web", message.replace('\n', ' ')));
+    }
+
+    @Override
+    public void sendDirectPlayerMessage(String playerNameOrUuid, String message) {
+        if (playerNameOrUuid == null || message == null) return;
+        runOnServerThread(() -> Forge1710FeatureHelper.sendDirect(server, playerNameOrUuid, message));
+    }
+
+    @Override
+    public boolean teleportPlayerTo(String playerNameOrUuid, String dimension, double x, double y, double z) {
+        if (playerNameOrUuid == null) return false;
+        runOnServerThread(() -> Forge1710FeatureHelper.teleport(server, playerNameOrUuid, x, y, z));
+        return true;
+    }
+
+    @Override
+    public void shutdownServer(String reason) {
+        runOnServerThread(() -> server.initiateShutdown());
+    }
 }

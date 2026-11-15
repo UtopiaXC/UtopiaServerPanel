@@ -6,6 +6,8 @@ import com.google.gson.JsonObject;
 import com.utopiaxc.utopiaserverpanel.logging.PanelLog;
 import com.utopiaxc.utopiaserverpanel.terminal.ConsoleLogBuffer;
 import com.utopiaxc.utopiaserverpanel.web.cache.PlayerDataCache;
+import com.utopiaxc.utopiaserverpanel.web.db.model.InGameChatEntry;
+import com.utopiaxc.utopiaserverpanel.web.db.model.InSiteMessage;
 import com.utopiaxc.utopiaserverpanel.web.handler.WebSocketFrameHandler;
 import com.utopiaxc.utopiaserverpanel.web.middleware.TokenAuthHelper;
 import com.utopiaxc.utopiaserverpanel.web.service.PermissionService;
@@ -51,10 +53,51 @@ public final class WebSocketController {
     }
 
     private static boolean hasChannelPermission(Channel ch, String perm) {
+        String activeToken = ch.attr(WebSocketFrameHandler.AUTH_TOKEN_ATTR).get();
         Integer uid = ch.attr(WebSocketFrameHandler.USER_ID_ATTR).get();
-        return uid == null
-                ? PermissionService.guestMeetsRequirement(perm)
-                : PermissionService.meetsRequirement(uid.intValue(), perm);
+        String scopes = ch.attr(WebSocketFrameHandler.API_SCOPES_ATTR).get();
+        if (activeToken != null && !activeToken.isEmpty()) {
+            TokenAuthHelper.Principal refreshed = TokenAuthHelper.resolve(activeToken);
+            if (refreshed == null) {
+                ch.attr(WebSocketFrameHandler.USER_ID_ATTR).set(null);
+                ch.attr(WebSocketFrameHandler.AUTH_TOKEN_ATTR).set(null);
+                ch.attr(WebSocketFrameHandler.API_SCOPES_ATTR).set(null);
+                uid = null;
+                scopes = null;
+            } else {
+                uid = Integer.valueOf(refreshed.getUserId());
+                scopes = "api_token".equals(refreshed.getAuthType()) ? refreshed.getScopes() : "*";
+                ch.attr(WebSocketFrameHandler.USER_ID_ATTR).set(uid);
+                ch.attr(WebSocketFrameHandler.API_SCOPES_ATTR).set(scopes);
+            }
+        }
+        if (uid == null) {
+            return PermissionService.guestMeetsRequirement(perm);
+        }
+        if (scopes != null && !"*".equals(scopes.trim()) && !scopeMatchesPerm(scopes, perm)) {
+            return false;
+        }
+        return PermissionService.meetsRequirement(uid.intValue(), perm);
+    }
+
+    private static boolean scopeMatchesPerm(String scopes, String requiredPerm) {
+        String[] parts = requiredPerm.split(":");
+        String reqMod = parts[0];
+        int reqLv = parts.length > 1 ? Integer.parseInt(parts[1]) : 1;
+        for (String raw : scopes.split(",")) {
+            String token = raw.trim();
+            if ("*".equals(token)) return true;
+            String[] p = token.split(":");
+            if (reqMod.equalsIgnoreCase(p[0].trim())) {
+                int patLv = p.length > 1 ? parseSafeInt(p[1].trim(), 2) : 2;
+                if (patLv >= reqLv) return true;
+            }
+        }
+        return false;
+    }
+
+    private static int parseSafeInt(String s, int def) {
+        try { return Integer.parseInt(s); } catch (Exception e) { return def; }
     }
 
     public static void onConnect(ChannelHandlerContext ctx) {
@@ -86,9 +129,20 @@ public final class WebSocketController {
             if (req.has("token")) {
                 if (req.get("token").isJsonNull() || req.get("token").getAsString().trim().isEmpty()) {
                     ch.attr(WebSocketFrameHandler.USER_ID_ATTR).set(null);
+                    ch.attr(WebSocketFrameHandler.AUTH_TOKEN_ATTR).set(null);
+                    ch.attr(WebSocketFrameHandler.API_SCOPES_ATTR).set(null);
                 } else {
-                    TokenAuthHelper.Principal principal = TokenAuthHelper.resolve(req.get("token").getAsString());
-                    ch.attr(WebSocketFrameHandler.USER_ID_ATTR).set(principal != null ? Integer.valueOf(principal.getUserId()) : null);
+                    String raw = req.get("token").getAsString().trim();
+                    TokenAuthHelper.Principal principal = TokenAuthHelper.resolve(raw);
+                    if (principal != null) {
+                        ch.attr(WebSocketFrameHandler.USER_ID_ATTR).set(Integer.valueOf(principal.getUserId()));
+                        ch.attr(WebSocketFrameHandler.AUTH_TOKEN_ATTR).set(raw);
+                        ch.attr(WebSocketFrameHandler.API_SCOPES_ATTR).set("api_token".equals(principal.getAuthType()) ? principal.getScopes() : "*");
+                    } else {
+                        ch.attr(WebSocketFrameHandler.USER_ID_ATTR).set(null);
+                        ch.attr(WebSocketFrameHandler.AUTH_TOKEN_ATTR).set(null);
+                        ch.attr(WebSocketFrameHandler.API_SCOPES_ATTR).set(null);
+                    }
                 }
             }
 
@@ -225,6 +279,40 @@ public final class WebSocketController {
 
         for (Channel ch : channels) {
             if (hasChannelPermission(ch, "logs:1")) {
+                ch.writeAndFlush(new TextWebSocketFrame(payload));
+            }
+        }
+    }
+
+    public static void broadcastInGameChat(InGameChatEntry entry) {
+        ChannelGroup channels = WebSocketFrameHandler.getChannels();
+        if (channels.isEmpty() || entry == null) return;
+
+        JsonObject wsMsg = new JsonObject();
+        wsMsg.addProperty("type", "ingame_chat");
+        wsMsg.add("data", GSON.toJsonTree(entry));
+        String payload = GSON.toJson(wsMsg);
+
+        for (Channel ch : channels) {
+            Integer uid = ch.attr(WebSocketFrameHandler.USER_ID_ATTR).get();
+            if (uid != null) {
+                ch.writeAndFlush(new TextWebSocketFrame(payload));
+            }
+        }
+    }
+
+    public static void pushInboxNotification(int userId, InSiteMessage msg) {
+        ChannelGroup channels = WebSocketFrameHandler.getChannels();
+        if (channels.isEmpty() || msg == null) return;
+
+        JsonObject wsMsg = new JsonObject();
+        wsMsg.addProperty("type", "inbox_notification");
+        wsMsg.add("data", GSON.toJsonTree(msg));
+        String payload = GSON.toJson(wsMsg);
+
+        for (Channel ch : channels) {
+            Integer uid = ch.attr(WebSocketFrameHandler.USER_ID_ATTR).get();
+            if (uid != null && uid.intValue() == userId) {
                 ch.writeAndFlush(new TextWebSocketFrame(payload));
             }
         }

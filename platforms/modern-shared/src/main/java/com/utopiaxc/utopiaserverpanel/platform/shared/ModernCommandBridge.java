@@ -48,6 +48,25 @@ public final class ModernCommandBridge {
                                 .then(Commands.literal("2fa")
                                         .executes(ctx -> dispatch(ctx.getSource(),
                                                 PanelEngine.commands().executeRecover(callerFrom(ctx.getSource()), "2fa")))))
+                        .then(Commands.literal("inbox")
+                                .executes(ctx -> dispatch(ctx.getSource(),
+                                        PanelEngine.commands().executeInbox(callerFrom(ctx.getSource())))))
+                        .then(Commands.literal("msg")
+                                .then(Commands.argument("target", com.mojang.brigadier.arguments.StringArgumentType.word())
+                                        .then(Commands.argument("message", com.mojang.brigadier.arguments.StringArgumentType.greedyString())
+                                                .executes(ctx -> dispatch(ctx.getSource(),
+                                                        PanelEngine.commands().executeSendMessage(
+                                                                callerFrom(ctx.getSource()),
+                                                                com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "target"),
+                                                                com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "message")))))))
+                        .then(Commands.literal("mail")
+                                .then(Commands.argument("target", com.mojang.brigadier.arguments.StringArgumentType.word())
+                                        .then(Commands.argument("message", com.mojang.brigadier.arguments.StringArgumentType.greedyString())
+                                                .executes(ctx -> dispatch(ctx.getSource(),
+                                                        PanelEngine.commands().executeSendMessage(
+                                                                callerFrom(ctx.getSource()),
+                                                                com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "target"),
+                                                                com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "message")))))))
         );
     }
 

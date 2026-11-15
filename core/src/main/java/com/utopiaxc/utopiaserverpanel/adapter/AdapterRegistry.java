@@ -20,6 +20,10 @@ public final class AdapterRegistry {
         return adapter;
     }
 
+    public static GameAdapter getNullable() {
+        return adapter;
+    }
+
     public static void shutdown() {
         adapter = null;
     }

@@ -43,6 +43,8 @@ public final class BindingService {
         return code;
     }
 
+    public static final int MAX_BINDINGS_PER_USER = 20;
+
     public static PlayerBindingInfo findByPlayerUuid(final String playerUuid) {
         return MyBatisFactory.doWorkWithResult(session ->
                 session.getMapper(PlayerBindingMapper.class).findByPlayerUuid(playerUuid));
@@ -51,6 +53,19 @@ public final class BindingService {
     public static PlayerBindingInfo findByUserId(final int userId) {
         return MyBatisFactory.doWorkWithResult(session ->
                 session.getMapper(PlayerBindingMapper.class).findByUserId(userId));
+    }
+
+    public static java.util.List<PlayerBindingInfo> listByUserId(final int userId) {
+        return MyBatisFactory.doWorkWithResult(session ->
+                session.getMapper(PlayerBindingMapper.class).listByUserId(userId));
+    }
+
+    public static PlayerBindingInfo findByUserAndUuid(final int userId, final String playerUuid) {
+        if (playerUuid == null || playerUuid.trim().isEmpty()) {
+            return findByUserId(userId);
+        }
+        return MyBatisFactory.doWorkWithResult(session ->
+                session.getMapper(PlayerBindingMapper.class).findByUserAndUuid(userId, playerUuid.trim()));
     }
 
     public static final class BindResult {
@@ -84,8 +99,9 @@ public final class BindingService {
 
         return MyBatisFactory.doWorkWithResult(session -> {
             PlayerBindingMapper mapper = session.getMapper(PlayerBindingMapper.class);
-            if (mapper.findByUserId(userId) != null) {
-                return new BindResult(false, "ALREADY_BOUND", "Account is already bound to a player", null, null);
+            int currentCount = mapper.countByUserId(userId);
+            if (currentCount >= MAX_BINDINGS_PER_USER) {
+                return new BindResult(false, "BIND_LIMIT_REACHED", "Maximum bound player limit reached (" + MAX_BINDINGS_PER_USER + ")", null, null);
             }
 
             BindingCodeInfo codeInfo = mapper.findByCode(code);
@@ -94,13 +110,30 @@ public final class BindingService {
             }
 
             if (mapper.countByPlayerUuid(codeInfo.getPlayerUuid()) > 0) {
-                return new BindResult(false, "PLAYER_ALREADY_BOUND", "This player is already bound to another account", null, null);
+                return new BindResult(false, "PLAYER_ALREADY_BOUND", "This player is already bound to an account", null, null);
             }
 
-            mapper.insertBinding(userId, codeInfo.getPlayerUuid(), now);
+            int isPrimary = currentCount == 0 ? 1 : 0;
+            mapper.insertBinding(userId, codeInfo.getPlayerUuid(), isPrimary, now);
             mapper.markCodeConsumed(code, now);
             return new BindResult(true, null, "Player bound successfully", codeInfo.getPlayerName(), codeInfo.getPlayerUuid());
         });
+    }
+
+    public static boolean setPrimary(final int userId, final String playerUuid) {
+        if (playerUuid == null || playerUuid.trim().isEmpty()) {
+            return false;
+        }
+        final String targetUuid = playerUuid.trim();
+        return MyBatisFactory.doWorkWithResult(session -> {
+            PlayerBindingMapper mapper = session.getMapper(PlayerBindingMapper.class);
+            if (mapper.findByUserAndUuid(userId, targetUuid) == null) {
+                return Boolean.FALSE;
+            }
+            mapper.clearPrimaryForUser(userId);
+            mapper.setPrimaryForUserAndUuid(userId, targetUuid);
+            return Boolean.TRUE;
+        }).booleanValue();
     }
 
     public static boolean unbindByUserId(final int userId) {
@@ -108,10 +141,31 @@ public final class BindingService {
                 Boolean.valueOf(session.getMapper(PlayerBindingMapper.class).deleteByUserId(userId) > 0)).booleanValue();
     }
 
+    public static boolean unbindByUserAndUuid(final int userId, final String playerUuid) {
+        if (playerUuid == null || playerUuid.trim().isEmpty()) {
+            return unbindByUserId(userId);
+        }
+        final String targetUuid = playerUuid.trim();
+        return MyBatisFactory.doWorkWithResult(session -> {
+            PlayerBindingMapper mapper = session.getMapper(PlayerBindingMapper.class);
+            int deleted = mapper.deleteByUserAndUuid(userId, targetUuid);
+            if (deleted > 0) {
+                mapper.ensurePrimaryExists(userId);
+                return Boolean.TRUE;
+            }
+            return Boolean.FALSE;
+        }).booleanValue();
+    }
+
     public static boolean unbindByPlayer(final String playerUuid) {
         return MyBatisFactory.doWorkWithResult(session -> {
-            int deleted = session.getMapper(PlayerBindingMapper.class).deleteByPlayerUuid(playerUuid);
+            PlayerBindingMapper mapper = session.getMapper(PlayerBindingMapper.class);
+            PlayerBindingInfo existing = mapper.findByPlayerUuid(playerUuid);
+            int deleted = mapper.deleteByPlayerUuid(playerUuid);
             if (deleted > 0) {
+                if (existing != null) {
+                    mapper.ensurePrimaryExists(existing.getUserId());
+                }
                 PanelLog.get().info("Player {} unbound from panel account", playerUuid);
                 return Boolean.TRUE;
             }

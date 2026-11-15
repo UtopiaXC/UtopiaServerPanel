@@ -1,19 +1,32 @@
 package com.utopiaxc.utopiaserverpanel.web.service;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.utopiaxc.utopiaserverpanel.adapter.AdapterRegistry;
+import com.utopiaxc.utopiaserverpanel.adapter.GameAdapter;
+import com.utopiaxc.utopiaserverpanel.adapter.util.McPlayerProfileReader;
 import com.utopiaxc.utopiaserverpanel.auth.CryptoUtil;
 import com.utopiaxc.utopiaserverpanel.auth.PasswordUtil;
 import com.utopiaxc.utopiaserverpanel.auth.TotpUtil;
+import com.utopiaxc.utopiaserverpanel.auth.UsernamePolicy;
+import com.utopiaxc.utopiaserverpanel.web.context.JsonHelper;
 import com.utopiaxc.utopiaserverpanel.web.db.MyBatisFactory;
 import com.utopiaxc.utopiaserverpanel.web.db.mapper.ApiTokenMapper;
 import com.utopiaxc.utopiaserverpanel.web.db.mapper.SecurityMapper;
 import com.utopiaxc.utopiaserverpanel.web.db.mapper.SessionMapper;
 import com.utopiaxc.utopiaserverpanel.web.db.mapper.UserMapper;
+import com.utopiaxc.utopiaserverpanel.web.db.mapper.UserProfileMapper;
 import com.utopiaxc.utopiaserverpanel.web.db.model.ApiToken;
 import com.utopiaxc.utopiaserverpanel.web.db.model.LoginHistoryEntry;
+import com.utopiaxc.utopiaserverpanel.web.db.model.PlayerBindingInfo;
+import com.utopiaxc.utopiaserverpanel.web.db.model.ProfilePrivacyConfig;
 import com.utopiaxc.utopiaserverpanel.web.db.model.UserAccount;
+import com.utopiaxc.utopiaserverpanel.web.db.model.UserProfileInfo;
 import com.utopiaxc.utopiaserverpanel.web.db.model.UserSession;
 import com.utopiaxc.utopiaserverpanel.web.db.model.UserTotp;
 
+import java.nio.file.Path;
 import java.util.*;
 
 /**
@@ -21,6 +34,14 @@ import java.util.*;
  * Personal Access Tokens (PAT), and login audit history.
  */
 public final class ProfileService {
+
+    private static final int MAX_AVATAR_BYTES = 262144;
+    private static final int MAX_BIO_LENGTH = 500;
+    private static final int MAX_SOCIAL_ENTRIES = 15;
+    private static final Set<String> VALID_GENDERS = Collections.unmodifiableSet(new HashSet<String>(
+            Arrays.asList("unspecified", "male", "female", "other", "prefer_not_to_say")));
+    private static final Set<String> ALLOWED_AVATAR_MIMES = Collections.unmodifiableSet(new HashSet<String>(
+            Arrays.asList("image/png", "image/jpeg", "image/webp", "image/gif")));
 
     private ProfileService() {}
 
@@ -53,6 +74,25 @@ public final class ProfileService {
     }
 
     public static SimpleResult updateProfile(final int userId, String nickname, String email, String locale) {
+        return updateProfile(userId, nickname, email, locale, null, null, null, null, null, false,
+                false, false, false, false);
+    }
+
+    public static SimpleResult updateProfile(
+            final int userId,
+            String nickname,
+            String email,
+            String locale,
+            String gender,
+            String birthday,
+            String bio,
+            JsonElement socialAccountsEl,
+            String avatarData,
+            boolean avatarProvided,
+            boolean genderProvided,
+            boolean birthdayProvided,
+            boolean bioProvided,
+            boolean socialProvided) {
         final String cleanNick = nickname != null ? nickname.trim() : "";
         final String cleanEmail = (email != null && !email.trim().isEmpty()) ? email.trim() : null;
         if (cleanEmail != null && !cleanEmail.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) {
@@ -60,8 +100,61 @@ public final class ProfileService {
         }
         final String cleanLocale = (locale != null && !locale.trim().isEmpty()) ? locale.trim() : "zh-CN";
 
+        final String normalizedGender;
+        if (genderProvided) {
+            String g = gender != null ? gender.trim().toLowerCase(Locale.ROOT) : "unspecified";
+            if (!VALID_GENDERS.contains(g)) {
+                return new SimpleResult(false, "INVALID_GENDER", "Unsupported gender option", null);
+            }
+            normalizedGender = g;
+        } else {
+            normalizedGender = null;
+        }
+
+        final String normalizedBirthday;
+        if (birthdayProvided) {
+            String b = birthday != null ? birthday.trim() : "";
+            if (!b.isEmpty() && !b.matches("^\\d{4}-\\d{2}-\\d{2}$")) {
+                return new SimpleResult(false, "INVALID_BIRTHDAY", "Birthday must be YYYY-MM-DD", null);
+            }
+            normalizedBirthday = b;
+        } else {
+            normalizedBirthday = null;
+        }
+
+        final String normalizedBio;
+        if (bioProvided) {
+            String rawBio = bio != null ? bio.trim() : "";
+            normalizedBio = rawBio.length() > MAX_BIO_LENGTH ? rawBio.substring(0, MAX_BIO_LENGTH) : rawBio;
+        } else {
+            normalizedBio = null;
+        }
+
+        final String normalizedSocialJson;
+        if (socialProvided) {
+            try {
+                normalizedSocialJson = normalizeSocialAccountsJson(socialAccountsEl);
+            } catch (IllegalArgumentException e) {
+                return new SimpleResult(false, "INVALID_SOCIAL_ACCOUNTS", e.getMessage(), null);
+            }
+        } else {
+            normalizedSocialJson = null;
+        }
+
+        final String normalizedAvatar;
+        if (avatarProvided) {
+            try {
+                normalizedAvatar = normalizeAvatarDataUrl(avatarData);
+            } catch (IllegalArgumentException e) {
+                return new SimpleResult(false, "INVALID_AVATAR", e.getMessage(), null);
+            }
+        } else {
+            normalizedAvatar = null;
+        }
+
         return MyBatisFactory.doWorkWithResult(session -> {
             UserMapper mapper = session.getMapper(UserMapper.class);
+            UserProfileMapper profileMapper = session.getMapper(UserProfileMapper.class);
             UserAccount existing = mapper.findById(userId);
             if (existing == null) return new SimpleResult(false, "NOT_FOUND", "User not found", null);
             if (cleanEmail != null && mapper.countByEmailExclude(cleanEmail, userId) > 0) {
@@ -70,15 +163,30 @@ public final class ProfileService {
             long now = System.currentTimeMillis() / 1000L;
             String finalNick = cleanNick.isEmpty() ? existing.getUsername() : cleanNick;
             mapper.updateProfile(userId, finalNick, cleanEmail, cleanLocale, now);
+
+            UserProfileInfo currentExtra = profileMapper.findByUserId(userId);
+            String finalAvatar = avatarProvided ? normalizedAvatar
+                    : (currentExtra != null && currentExtra.getAvatarData() != null ? currentExtra.getAvatarData() : "");
+            String finalGender = genderProvided ? normalizedGender
+                    : (currentExtra != null && currentExtra.getGender() != null ? currentExtra.getGender() : "unspecified");
+            String finalBirthday = birthdayProvided ? normalizedBirthday
+                    : (currentExtra != null && currentExtra.getBirthday() != null ? currentExtra.getBirthday() : "");
+            String finalBio = bioProvided ? normalizedBio
+                    : (currentExtra != null && currentExtra.getBio() != null ? currentExtra.getBio() : "");
+            String finalSocial = socialProvided ? normalizedSocialJson
+                    : (currentExtra != null && currentExtra.getSocialAccounts() != null ? currentExtra.getSocialAccounts() : "[]");
+
+            profileMapper.upsertProfileDetails(userId, finalAvatar, finalGender, finalBirthday, finalBio, finalSocial, now);
             return new SimpleResult(true, null, "Profile updated", getCurrentUserInfo(userId));
         });
     }
 
     public static SimpleResult changeUsername(final int userId, String newUsername, final String currentPassword) {
-        if (newUsername == null || !newUsername.trim().matches("^[a-zA-Z0-9_]{3,32}$")) {
-            return new SimpleResult(false, "INVALID_USERNAME", "Username must be 3-32 alphanumeric or underscore characters", null);
+        UsernamePolicy.ValidationResult check = UsernamePolicy.validate(newUsername);
+        if (!check.isValid()) {
+            return new SimpleResult(false, check.getErrorCode(), check.getMessage(), null);
         }
-        final String clean = newUsername.trim();
+        final String clean = check.getNormalized();
         return MyBatisFactory.doWorkWithResult(session -> {
             UserMapper mapper = session.getMapper(UserMapper.class);
             UserAccount acc = mapper.findById(userId);
@@ -193,7 +301,7 @@ public final class ProfileService {
             UserAccount acc = userMapper.findById(userId);
             if (acc == null) return new SimpleResult(false, "NOT_FOUND", "User not found", null);
 
-            if (SettingsService.isForce2fa() || acc.isRequire2fa()) {
+            if ((SettingsService.isForce2fa() || acc.isRequire2fa()) && acc.getPasskeyCount() <= 0) {
                 return new SimpleResult(false, "TWO_FA_REQUIRED_BY_POLICY", "Two-factor authentication is enforced by policy", null);
             }
             if (!PasswordUtil.verify(password, acc.getPasswordHash())) {
@@ -308,6 +416,301 @@ public final class ProfileService {
     public static boolean revokeApiToken(int userId, int tokenId) {
         return MyBatisFactory.doWorkWithResult(session ->
                 session.getMapper(ApiTokenMapper.class).deleteForUser(tokenId, userId) > 0);
+    }
+
+    // ── Extended Profile & Public Player Homepage ──
+
+    public static UserProfileInfo getProfileExtras(int userId) {
+        return MyBatisFactory.doWorkWithResult(session ->
+                session.getMapper(UserProfileMapper.class).findByUserId(userId));
+    }
+
+    public static Map<String, Boolean> getPrivacyConfig(int userId) {
+        UserProfileInfo info = getProfileExtras(userId);
+        ProfilePrivacyConfig cfg = ProfilePrivacyConfig.fromJson(info != null ? info.getPrivacyJson() : null);
+        return cfg.toMap();
+    }
+
+    public static SimpleResult updatePrivacyConfig(final int userId, final JsonObject body) {
+        if (body == null) {
+            return new SimpleResult(false, "INVALID_REQUEST", "Privacy settings payload required", null);
+        }
+        return MyBatisFactory.doWorkWithResult(session -> {
+            UserMapper userMapper = session.getMapper(UserMapper.class);
+            if (userMapper.findById(userId) == null) {
+                return new SimpleResult(false, "NOT_FOUND", "User not found", null);
+            }
+            UserProfileMapper profileMapper = session.getMapper(UserProfileMapper.class);
+            UserProfileInfo existing = profileMapper.findByUserId(userId);
+            ProfilePrivacyConfig cfg = ProfilePrivacyConfig.fromJson(existing != null ? existing.getPrivacyJson() : null);
+
+            if (body.has("publicProfileEnabled") && body.get("publicProfileEnabled").isJsonPrimitive()) {
+                cfg.setPublicProfileEnabled(body.get("publicProfileEnabled").getAsBoolean());
+            }
+            if (body.has("showUsername") && body.get("showUsername").isJsonPrimitive()) {
+                cfg.setShowUsername(body.get("showUsername").getAsBoolean());
+            }
+            if (body.has("showAvatar") && body.get("showAvatar").isJsonPrimitive()) {
+                cfg.setShowAvatar(body.get("showAvatar").getAsBoolean());
+            }
+            if (body.has("showNickname") && body.get("showNickname").isJsonPrimitive()) {
+                cfg.setShowNickname(body.get("showNickname").getAsBoolean());
+            }
+            if (body.has("showBio") && body.get("showBio").isJsonPrimitive()) {
+                cfg.setShowBio(body.get("showBio").getAsBoolean());
+            }
+            if (body.has("showEmail") && body.get("showEmail").isJsonPrimitive()) {
+                cfg.setShowEmail(body.get("showEmail").getAsBoolean());
+            }
+            if (body.has("showGender") && body.get("showGender").isJsonPrimitive()) {
+                cfg.setShowGender(body.get("showGender").getAsBoolean());
+            }
+            if (body.has("showBirthday") && body.get("showBirthday").isJsonPrimitive()) {
+                cfg.setShowBirthday(body.get("showBirthday").getAsBoolean());
+            }
+            if (body.has("showSocialAccounts") && body.get("showSocialAccounts").isJsonPrimitive()) {
+                cfg.setShowSocialAccounts(body.get("showSocialAccounts").getAsBoolean());
+            }
+            if (body.has("showRole") && body.get("showRole").isJsonPrimitive()) {
+                cfg.setShowRole(body.get("showRole").getAsBoolean());
+            }
+            if (body.has("showRegisteredAt") && body.get("showRegisteredAt").isJsonPrimitive()) {
+                cfg.setShowRegisteredAt(body.get("showRegisteredAt").getAsBoolean());
+            }
+            if (body.has("showMcCharacters") && body.get("showMcCharacters").isJsonPrimitive()) {
+                cfg.setShowMcCharacters(body.get("showMcCharacters").getAsBoolean());
+            }
+            if (body.has("showMcOnlineStatus") && body.get("showMcOnlineStatus").isJsonPrimitive()) {
+                cfg.setShowMcOnlineStatus(body.get("showMcOnlineStatus").getAsBoolean());
+            }
+            if (body.has("showMcPlaytime") && body.get("showMcPlaytime").isJsonPrimitive()) {
+                cfg.setShowMcPlaytime(body.get("showMcPlaytime").getAsBoolean());
+            }
+            if (body.has("showMcAchievements") && body.get("showMcAchievements").isJsonPrimitive()) {
+                cfg.setShowMcAchievements(body.get("showMcAchievements").getAsBoolean());
+            }
+            if (body.has("showMcStats") && body.get("showMcStats").isJsonPrimitive()) {
+                cfg.setShowMcStats(body.get("showMcStats").getAsBoolean());
+            }
+
+            long now = System.currentTimeMillis() / 1000L;
+            profileMapper.upsertPrivacy(userId, cfg.toJson(), now);
+            return new SimpleResult(true, null, "Privacy settings updated", getCurrentUserInfo(userId));
+        });
+    }
+
+    public static Map<String, Object> getPublicProfile(String rawUsername, Integer viewerUserId) {
+        if (rawUsername == null || rawUsername.trim().isEmpty()) {
+            return null;
+        }
+        final String targetUsername = rawUsername.trim();
+        UserAccount target = MyBatisFactory.doWorkWithResult(session ->
+                session.getMapper(UserMapper.class).findByUsername(targetUsername));
+        if (target == null) {
+            return null;
+        }
+
+        boolean isOwner = viewerUserId != null && viewerUserId.intValue() == target.getId();
+        UserProfileInfo extra = getProfileExtras(target.getId());
+        ProfilePrivacyConfig privacy = ProfilePrivacyConfig.fromJson(extra != null ? extra.getPrivacyJson() : null);
+
+        if (!privacy.isPublicProfileEnabled() && !isOwner) {
+            Map<String, Object> hidden = new LinkedHashMap<String, Object>();
+            hidden.put("exists", Boolean.TRUE);
+            hidden.put("publicProfileEnabled", Boolean.FALSE);
+            hidden.put("isOwner", Boolean.FALSE);
+            return hidden;
+        }
+
+        Map<String, Object> dto = new LinkedHashMap<String, Object>();
+        dto.put("exists", Boolean.TRUE);
+        dto.put("publicProfileEnabled", Boolean.valueOf(privacy.isPublicProfileEnabled()));
+        dto.put("isOwner", Boolean.valueOf(isOwner));
+        dto.put("visibleFields", privacy.toMap());
+
+        if (privacy.isShowUsername()) {
+            dto.put("username", target.getUsername());
+        }
+        if (privacy.isShowAvatar()) {
+            dto.put("avatarData", extra != null && extra.getAvatarData() != null ? extra.getAvatarData() : "");
+        }
+        if (privacy.isShowNickname()) {
+            dto.put("nickname", target.getNickname());
+        }
+        if (privacy.isShowBio()) {
+            dto.put("bio", extra != null && extra.getBio() != null ? extra.getBio() : "");
+        }
+        if (privacy.isShowEmail()) {
+            dto.put("email", target.getEmail());
+        }
+        if (privacy.isShowGender()) {
+            dto.put("gender", extra != null && extra.getGender() != null ? extra.getGender() : "unspecified");
+        }
+        if (privacy.isShowBirthday()) {
+            dto.put("birthday", extra != null && extra.getBirthday() != null ? extra.getBirthday() : "");
+        }
+        if (privacy.isShowSocialAccounts()) {
+            dto.put("socialAccounts", parseSocialAccounts(extra != null ? extra.getSocialAccounts() : null));
+        }
+        if (privacy.isShowRole()) {
+            dto.put("roleName", target.getRoleName());
+            dto.put("roleDisplayName", target.getRoleDisplayName());
+        }
+        if (privacy.isShowRegisteredAt()) {
+            dto.put("createdAt", Long.valueOf(target.getCreatedAt()));
+        }
+
+        if (privacy.isShowMcCharacters()) {
+            List<PlayerBindingInfo> bindings = BindingService.listByUserId(target.getId());
+            GameAdapter adapter = AdapterRegistry.getNullable();
+            Path worldDir = resolveWorldDirectory(adapter);
+
+            List<Map<String, Object>> mcList = new ArrayList<Map<String, Object>>(bindings.size());
+            for (PlayerBindingInfo b : bindings) {
+                Map<String, Object> charMap = McPlayerProfileReader.readCharacterData(
+                        worldDir,
+                        b.getPlayerUuid(),
+                        b.getPlayerName(),
+                        adapter,
+                        privacy.isShowMcOnlineStatus(),
+                        privacy.isShowMcPlaytime(),
+                        privacy.isShowMcAchievements(),
+                        privacy.isShowMcStats());
+                charMap.put("primary", Boolean.valueOf(b.isPrimary()));
+                charMap.put("boundAt", Long.valueOf(b.getBoundAt()));
+                mcList.add(charMap);
+            }
+            dto.put("mcCharacters", mcList);
+        }
+
+        return dto;
+    }
+
+    private static Path resolveWorldDirectory(GameAdapter adapter) {
+        if (adapter != null) {
+            try {
+                Path p = adapter.getWorldDirectory();
+                if (p != null) return p;
+            } catch (Exception ignored) {
+                // fall back to registry
+            }
+        }
+        return WorldRegistryService.getActiveWorldDir();
+    }
+
+    public static List<Map<String, String>> parseSocialAccounts(String rawJson) {
+        List<Map<String, String>> list = new ArrayList<Map<String, String>>();
+        if (rawJson == null || rawJson.trim().isEmpty()) {
+            return list;
+        }
+        String trimmed = rawJson.trim();
+        if (!trimmed.startsWith("[")) {
+            return list;
+        }
+        try {
+            JsonArray arr = JsonHelper.parseArray(trimmed);
+            for (JsonElement el : arr) {
+                if (el == null || !el.isJsonObject()) continue;
+                JsonObject obj = el.getAsJsonObject();
+                String account = JsonHelper.str(obj, "account");
+                if (account == null || account.trim().isEmpty()) continue;
+                String platform = JsonHelper.str(obj, "platform");
+                String customPlatform = JsonHelper.str(obj, "customPlatform");
+                String cleanPlatform = (platform != null && !platform.trim().isEmpty()) ? platform.trim() : "custom";
+                Map<String, String> entry = new LinkedHashMap<String, String>();
+                entry.put("platform", cleanPlatform);
+                if ("custom".equalsIgnoreCase(cleanPlatform) && customPlatform != null && !customPlatform.trim().isEmpty()) {
+                    entry.put("customPlatform", customPlatform.trim());
+                }
+                entry.put("account", account.trim());
+                list.add(entry);
+            }
+        } catch (Exception ignored) {
+            return Collections.emptyList();
+        }
+        return list;
+    }
+
+    private static String normalizeSocialAccountsJson(JsonElement el) {
+        if (el == null || el.isJsonNull()) {
+            return "[]";
+        }
+        JsonArray arr;
+        if (el.isJsonArray()) {
+            arr = el.getAsJsonArray();
+        } else if (el.isJsonPrimitive()) {
+            String raw = el.getAsString().trim();
+            if (raw.isEmpty()) return "[]";
+            if (!raw.startsWith("[")) {
+                throw new IllegalArgumentException("Social accounts must be a JSON array");
+            }
+            arr = JsonHelper.parseArray(raw);
+        } else {
+            throw new IllegalArgumentException("Invalid social accounts format");
+        }
+
+        List<Map<String, String>> normalized = new ArrayList<Map<String, String>>();
+        for (JsonElement itemEl : arr) {
+            if (normalized.size() >= MAX_SOCIAL_ENTRIES) break;
+            if (itemEl == null || !itemEl.isJsonObject()) continue;
+            JsonObject obj = itemEl.getAsJsonObject();
+            String account = JsonHelper.str(obj, "account");
+            if (account == null || account.trim().isEmpty()) continue;
+            String cleanAcc = account.trim();
+            if (cleanAcc.length() > 160) cleanAcc = cleanAcc.substring(0, 160);
+            String platform = JsonHelper.str(obj, "platform");
+            String cleanPlatform = (platform != null && !platform.trim().isEmpty()) ? platform.trim() : "custom";
+            if (cleanPlatform.length() > 32) cleanPlatform = cleanPlatform.substring(0, 32);
+
+            Map<String, String> entry = new LinkedHashMap<String, String>();
+            entry.put("platform", cleanPlatform);
+            if ("custom".equalsIgnoreCase(cleanPlatform)) {
+                String customPlatform = JsonHelper.str(obj, "customPlatform");
+                if (customPlatform != null && !customPlatform.trim().isEmpty()) {
+                    String cleanCustom = customPlatform.trim();
+                    entry.put("customPlatform", cleanCustom.length() > 48 ? cleanCustom.substring(0, 48) : cleanCustom);
+                }
+            }
+            entry.put("account", cleanAcc);
+            normalized.add(entry);
+        }
+        return JsonHelper.toJson(normalized);
+    }
+
+    private static String normalizeAvatarDataUrl(String dataUrl) {
+        if (dataUrl == null || dataUrl.trim().isEmpty()) {
+            return "";
+        }
+        String trimmed = dataUrl.trim();
+        if (!trimmed.toLowerCase(Locale.ROOT).startsWith("data:")) {
+            throw new IllegalArgumentException("Invalid avatar data URI");
+        }
+        int commaIdx = trimmed.indexOf(',');
+        if (commaIdx <= 5) {
+            throw new IllegalArgumentException("Invalid avatar data URI");
+        }
+        String meta = trimmed.substring(5, commaIdx);
+        String payload = trimmed.substring(commaIdx + 1).replaceAll("\\s+", "");
+        if (!meta.toLowerCase(Locale.ROOT).endsWith(";base64")) {
+            throw new IllegalArgumentException("Avatar image must be base64 encoded");
+        }
+        String mime = meta.substring(0, meta.length() - ";base64".length()).trim().toLowerCase(Locale.ROOT);
+        if (!ALLOWED_AVATAR_MIMES.contains(mime)) {
+            throw new IllegalArgumentException("Unsupported avatar image format: " + mime);
+        }
+        byte[] decoded;
+        try {
+            decoded = Base64.getDecoder().decode(payload);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid base64 avatar payload");
+        }
+        if (decoded.length == 0) {
+            throw new IllegalArgumentException("Avatar image is empty");
+        }
+        if (decoded.length > MAX_AVATAR_BYTES) {
+            throw new IllegalArgumentException("Avatar exceeds 256 KB limit");
+        }
+        return "data:" + mime + ";base64," + Base64.getEncoder().encodeToString(decoded);
     }
 }
 

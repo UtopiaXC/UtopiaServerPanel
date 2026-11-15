@@ -6,11 +6,11 @@ import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
-import org.apache.logging.log4j.core.config.Property;
 import org.apache.logging.log4j.core.layout.PatternLayout;
 
 /**
- * Shared Log4j2 appender forwarding server console logs into {@link ConsoleLogBuffer}
+ * Shared Log4j2 appender forwarding server console logs into
+ * {@link ConsoleLogBuffer}
  * across modern Minecraft versions (1.16.5 through 26.3+).
  */
 public final class Log4j2TerminalBridge extends AbstractAppender {
@@ -21,8 +21,11 @@ public final class Log4j2TerminalBridge extends AbstractAppender {
             .withAlwaysWriteExceptions(true)
             .build();
 
+    @SuppressWarnings("deprecation")
     private Log4j2TerminalBridge(String name, Filter filter) {
-        super(name, filter, LAYOUT, true, Property.EMPTY_ARRAY);
+        // Use the 4-arg constructor for binary compatibility with MC 1.16.5's Log4j
+        // 2.8.1 (lacks Property.EMPTY_ARRAY)
+        super(name, filter, LAYOUT, true);
     }
 
     @Override
@@ -41,8 +44,7 @@ public final class Log4j2TerminalBridge extends AbstractAppender {
                 event.getLoggerName(),
                 event.getThreadName(),
                 message,
-                event.getThrown()
-        );
+                event.getThrown());
     }
 
     public static void register() {
@@ -57,4 +59,3 @@ public final class Log4j2TerminalBridge extends AbstractAppender {
         ctx.updateLoggers();
     }
 }
-

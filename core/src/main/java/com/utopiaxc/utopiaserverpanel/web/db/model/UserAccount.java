@@ -1,5 +1,7 @@
 package com.utopiaxc.utopiaserverpanel.web.db.model;
 
+import java.util.List;
+
 public class UserAccount {
     private int id;
     private String username;
@@ -18,11 +20,13 @@ public class UserAccount {
     private String locale;
     private long createdAt;
     private long updatedAt;
-    // Joined from player_bindings -> mc_players & user_totp
+    // Joined from primary player_bindings -> mc_players, user_totp & user_passkeys
     private String playerUuid;
     private String playerName;
     private Long boundAt;
     private boolean totpEnabled;
+    private int passkeyCount;
+    private List<PlayerBindingInfo> boundPlayers;
 
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
@@ -66,6 +70,14 @@ public class UserAccount {
     public void setBoundAt(Long boundAt) { this.boundAt = boundAt; }
     public boolean isTotpEnabled() { return totpEnabled; }
     public void setTotpEnabled(boolean totpEnabled) { this.totpEnabled = totpEnabled; }
-    public boolean isBound() { return playerUuid != null && !playerUuid.isEmpty(); }
+    public int getPasskeyCount() { return passkeyCount; }
+    public void setPasskeyCount(int passkeyCount) { this.passkeyCount = passkeyCount; }
+    public boolean isTwoFactorEnabled() { return totpEnabled || passkeyCount > 0; }
+    public List<PlayerBindingInfo> getBoundPlayers() { return boundPlayers; }
+    public void setBoundPlayers(List<PlayerBindingInfo> boundPlayers) { this.boundPlayers = boundPlayers; }
+    public boolean isBound() {
+        return (playerUuid != null && !playerUuid.isEmpty())
+                || (boundPlayers != null && !boundPlayers.isEmpty());
+    }
 }
 

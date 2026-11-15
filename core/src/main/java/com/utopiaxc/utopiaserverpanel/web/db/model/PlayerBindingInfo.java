@@ -5,6 +5,7 @@ public class PlayerBindingInfo {
     private int userId;
     private String playerUuid;
     private String playerName;
+    private boolean primary;
     private long boundAt;
 
     public int getId() { return id; }
@@ -15,6 +16,8 @@ public class PlayerBindingInfo {
     public void setPlayerUuid(String playerUuid) { this.playerUuid = playerUuid; }
     public String getPlayerName() { return playerName; }
     public void setPlayerName(String playerName) { this.playerName = playerName; }
+    public boolean isPrimary() { return primary; }
+    public void setPrimary(boolean primary) { this.primary = primary; }
     public long getBoundAt() { return boundAt; }
     public void setBoundAt(long boundAt) { this.boundAt = boundAt; }
 }

@@ -20,8 +20,13 @@ public class AuthMiddleware implements Middleware {
             "POST/api/setup/test-smtp",
             "POST/api/setup/complete",
             "GET/api/site",
+            "GET/api/site/favicon",
             "GET/api/captcha/challenge",
             "POST/api/auth/login",
+            "POST/api/auth/passkey/login/options",
+            "POST/api/auth/passkey/login/verify",
+            "POST/api/auth/mfa/passkey/options",
+            "POST/api/auth/mfa/passkey/verify",
             "POST/api/auth/register",
             "POST/api/auth/activate",
             "POST/api/auth/refresh",
@@ -36,7 +41,16 @@ public class AuthMiddleware implements Middleware {
             "/api/me",
             "/api/player/me",
             "/api/binding/",
-            "/api/admin/"
+            "/api/admin/",
+            "/api/messages/",
+            "/api/chat/",
+            "/api/mods/",
+            "/api/profiler/",
+            "/api/whitelist/admin/",
+            "/api/map/waypoints",
+            "/api/map/teleport",
+            "/api/map/reset-health",
+            "/api/map/clear-cache"
     )));
 
     @Override
@@ -70,7 +84,9 @@ public class AuthMiddleware implements Middleware {
         }
 
         if (isAuthRequired(ctx.path())) {
-            if ("POST/api/me/2fa/setup".equals(methodPath)) {
+            if ("POST/api/me/2fa/setup".equals(methodPath)
+                    || "POST/api/me/passkeys/register/options".equals(methodPath)
+                    || "POST/api/me/passkeys/register/verify".equals(methodPath)) {
                 String mfaToken = ctx.header("X-MFA-Token");
                 if (mfaToken != null && !mfaToken.trim().isEmpty()) {
                     return true;

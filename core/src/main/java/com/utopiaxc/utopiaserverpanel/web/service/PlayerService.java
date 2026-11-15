@@ -12,7 +12,11 @@ public final class PlayerService {
     private PlayerService() {}
 
     public static JsonObject getPlayerDataForUser(int userId) {
-        PlayerBindingInfo binding = BindingService.findByUserId(userId);
+        return getPlayerDataForUser(userId, null);
+    }
+
+    public static JsonObject getPlayerDataForUser(int userId, String requestedPlayerUuid) {
+        PlayerBindingInfo binding = BindingService.findByUserAndUuid(userId, requestedPlayerUuid);
         if (binding == null || binding.getPlayerUuid() == null) return null;
 
         String playerUuid = binding.getPlayerUuid();

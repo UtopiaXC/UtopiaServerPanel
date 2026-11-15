@@ -111,6 +111,7 @@ dependencies {
         shade("io.netty:netty-common:${nettyVer}") { transitive = false }
     } else {
         shade("io.netty:netty-codec-http:${nettyVer}") { transitive = false }
+        runtimeOnly("io.netty:netty-codec-http:${nettyVer}") { transitive = false }
     }
     if (targetMeta.bundleSlf4j == true) {
         shade('org.slf4j:slf4j-api:1.7.36') { transitive = false }
