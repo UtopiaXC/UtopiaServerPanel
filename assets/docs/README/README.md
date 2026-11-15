@@ -14,8 +14,11 @@ Utopia Server Panel 将 Web 管理后台、实时控制台、状态监控以及�
 在对应版本的 Build Matrix 表格中直接点击适合你游戏版本与加载器的 `.jar` 即可下载。单文件开箱即用，无需额外安装数据库或外部运行库。
 
 ### CurseForge
-推荐。如果显示404或只有更旧的版本，可能最新版本正在审查，如有需要请从Github Release下载。  
 [CurseForge: Utopia Server Panel](https://www.curseforge.com/minecraft/mc-mods/utopia-server-panel)  
+
+### Modrinth
+[Modrinth: Utopia Server Panel](https://modrinth.com/mod/utopia-server-panel)
+
 
 ### Github Release
 [Latest Releases](https://github.com/UtopiaXC/UtopiaServerPanel/releases)  
