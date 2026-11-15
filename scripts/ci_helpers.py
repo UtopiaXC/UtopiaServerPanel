@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -18,7 +19,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 CURSEFORGE_UPLOAD_BASE_URL = "https://minecraft.curseforge.com"
 MODRINTH_API_BASE_URL = "https://api.modrinth.com"
@@ -552,6 +553,20 @@ def publish_curseforge(
         raise RuntimeError("No artifacts were uploaded to CurseForge.")
 
 
+def _normalize_modrinth_project_ref(raw_ref: str) -> str:
+    """Extract Modrinth project ID or slug from raw input or full project URL."""
+    raw = raw_ref.strip().strip("/")
+    if "modrinth.com/" in raw:
+        parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+        parts = [p for p in parsed.path.split("/") if p]
+        for idx, part in enumerate(parts):
+            if part in {"mod", "plugin", "datapack", "resourcepack", "shader", "modpack", "project"} and idx + 1 < len(parts):
+                return parts[idx + 1]
+        if parts:
+            return parts[-1]
+    return raw
+
+
 def _mr_get_json(url: str, token: str = "") -> object:
     headers = {
         "Accept": "application/json",
@@ -560,8 +575,59 @@ def _mr_get_json(url: str, token: str = "") -> object:
     if token:
         headers["Authorization"] = token
     req = urllib.request.Request(url, headers=headers, method="GET")
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as err:
+        err_body = err.read().decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"Modrinth GET {url} failed: HTTP {err.code} {err_body}") from err
+
+
+def _resolve_modrinth_project_id(clean_base: str, raw_project_id: str, token: str) -> str:
+    """Resolve canonical Modrinth project_id, supporting draft/unlisted projects and URLs/slugs."""
+    candidate = _normalize_modrinth_project_ref(raw_project_id)
+    if not candidate:
+        raise RuntimeError("MODRINTH_PROJECT_ID is empty.")
+
+    try:
+        project_info = _mr_get_json(f"{clean_base}/v2/project/{quote(candidate, safe='')}", token)
+        if isinstance(project_info, dict) and project_info.get("id"):
+            return str(project_info["id"])
+    except RuntimeError as direct_err:
+        # Draft/unlisted Modrinth projects frequently return 404 on GET /v2/project/{id|slug};
+        # fall back to the authenticated user's project list, which includes drafts.
+        print(f"Direct Modrinth project lookup fell back ({direct_err})", file=sys.stderr)
+
+    try:
+        user_info = _mr_get_json(f"{clean_base}/v2/user", token)
+        user_id = user_info.get("id") if isinstance(user_info, dict) else None
+        if user_id:
+            user_projects = _mr_get_json(f"{clean_base}/v2/user/{quote(str(user_id), safe='')}/projects", token)
+            if isinstance(user_projects, list):
+                cand_lower = candidate.lower()
+                for item in user_projects:
+                    if not isinstance(item, dict) or not item.get("id"):
+                        continue
+                    item_id = str(item["id"])
+                    item_slug = str(item.get("slug", "")).lower()
+                    if item_id == candidate or item_slug == cand_lower:
+                        return item_id
+    except RuntimeError as user_err:
+        print(f"Modrinth user projects lookup failed ({user_err})", file=sys.stderr)
+
+    # If token has CREATE_VERSION without READ_PROJECT/READ_USER, an 8-char project ID can still upload directly.
+    if re.fullmatch(r"[A-Za-z0-9]{8}", candidate):
+        print(
+            f"Warning: Could not pre-resolve project '{candidate}' via GET API; proceeding directly with ID '{candidate}'.",
+            file=sys.stderr,
+        )
+        return candidate
+
+    raise RuntimeError(
+        f"Unable to resolve Modrinth project '{raw_project_id}'. "
+        "Verify MODRINTH_PROJECT_ID (use the 8-char project ID or slug, especially for Draft projects) "
+        "and ensure MODRINTH_TOKEN belongs to a project member with READ_PROJECT, READ_USER, and CREATE_VERSION scopes."
+    )
 
 
 def resolve_modrinth_versions(
@@ -648,9 +714,11 @@ def publish_modrinth(
     changelog = read_release_note_text(repo_root, tag, version, note_file) or f"Release {tag}"
     release_type = curseforge_release_type(tag)
 
+    token = token.strip()
     clean_base = base_url.rstrip("/")
-    resolved_project_id = project_id
+    resolved_project_id = project_id.strip()
     if dry_run and not token:
+        resolved_project_id = _normalize_modrinth_project_ref(project_id)
         known_mc_versions = {
             mc_name
             for entry in manifest["baselines"]
@@ -660,10 +728,7 @@ def publish_modrinth(
         }
         known_loaders = {"forge", "fabric", "neoforge"}
     else:
-        project_info = _mr_get_json(f"{clean_base}/v2/project/{quote(project_id, safe='')}", token)
-        if not isinstance(project_info, dict) or not project_info.get("id"):
-            raise RuntimeError(f"Unable to resolve Modrinth project '{project_id}'")
-        resolved_project_id = str(project_info["id"])
+        resolved_project_id = _resolve_modrinth_project_id(clean_base, project_id, token)
 
         gv_tags = _mr_get_json(f"{clean_base}/v2/tag/game_version")
         loader_tags = _mr_get_json(f"{clean_base}/v2/tag/loader")

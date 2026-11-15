@@ -8,7 +8,16 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Custom Tag (e.g. v1.0.0)'
+        description: 'Target Tag (e.g. v1.1.0; required when skip_build=true from a branch)'
+        required: false
+        default: ''
+      skip_build:
+        description: 'Skip compile & reuse existing JARs (from GitHub Release or artifacts_run_id)'
+        required: false
+        type: boolean
+        default: false
+      artifacts_run_id:
+        description: 'Optional Workflow Run ID to reuse artifacts when skip_build=true'
         required: false
         default: ''
       push:
@@ -91,6 +100,7 @@ jobs:
   build-frontend:
     name: Build Web Frontend
     needs: version
+    if: github.event_name != 'workflow_dispatch' || inputs.skip_build != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -120,6 +130,7 @@ jobs:
   build-legacy:
     name: Build Legacy (${{ matrix.mc }} ${{ matrix.loader }})
     needs: [version, build-frontend]
+    if: github.event_name != 'workflow_dispatch' || inputs.skip_build != true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -187,6 +198,7 @@ jobs:
   build-modern:
     name: Build ${{ matrix.mc }} (${{ matrix.loader }})
     needs: [version, build-frontend]
+    if: github.event_name != 'workflow_dispatch' || inputs.skip_build != true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -259,7 +271,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.push != false)
+    if: (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.push != false)) && (github.event_name != 'workflow_dispatch' || inputs.skip_build != true)
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -306,7 +318,10 @@ jobs:
     needs: [version, build-legacy, build-modern]
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && (github.event_name != 'workflow_dispatch' || inputs.publish_curseforge != false)
+    permissions:
+      contents: read
+      actions: read
+    if: always() && !cancelled() && needs.version.result == 'success' && (needs.build-legacy.result == 'success' || needs.build-legacy.result == 'skipped') && (needs.build-modern.result == 'success' || needs.build-modern.result == 'skipped') && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && (github.event_name != 'workflow_dispatch' || inputs.publish_curseforge != false)
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -335,13 +350,33 @@ jobs:
           fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
-      - name: Download Built Mod JARs
-        if: steps.cf_check.outputs.ready == 'true'
+      - name: Download Built Mod JARs (Current Run)
+        if: steps.cf_check.outputs.ready == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.skip_build == true)
         uses: actions/download-artifact@v4
         with:
           pattern: mod-jar-*
           path: dist_release
           merge-multiple: true
+
+      - name: Download Built Mod JARs (Target Workflow Run)
+        if: steps.cf_check.outputs.ready == 'true' && github.event_name == 'workflow_dispatch' && inputs.skip_build == true && inputs.artifacts_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mod-jar-*
+          path: dist_release
+          merge-multiple: true
+          run-id: ${{ inputs.artifacts_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Built Mod JARs (GitHub Release)
+        if: steps.cf_check.outputs.ready == 'true' && github.event_name == 'workflow_dispatch' && inputs.skip_build == true && inputs.artifacts_run_id == ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          mkdir -p dist_release
+          gh release download "$TAG" -p "*.jar" -D dist_release
 
       - name: Upload Artifacts to CurseForge
         if: steps.cf_check.outputs.ready == 'true'
@@ -372,7 +407,10 @@ jobs:
     needs: [version, build-legacy, build-modern]
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && (github.event_name != 'workflow_dispatch' || inputs.publish_modrinth != false)
+    permissions:
+      contents: read
+      actions: read
+    if: always() && !cancelled() && needs.version.result == 'success' && (needs.build-legacy.result == 'success' || needs.build-legacy.result == 'skipped') && (needs.build-modern.result == 'success' || needs.build-modern.result == 'skipped') && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && (github.event_name != 'workflow_dispatch' || inputs.publish_modrinth != false)
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -401,13 +439,33 @@ jobs:
           fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
-      - name: Download Built Mod JARs
-        if: steps.mr_check.outputs.ready == 'true'
+      - name: Download Built Mod JARs (Current Run)
+        if: steps.mr_check.outputs.ready == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.skip_build == true)
         uses: actions/download-artifact@v4
         with:
           pattern: mod-jar-*
           path: dist_release
           merge-multiple: true
+
+      - name: Download Built Mod JARs (Target Workflow Run)
+        if: steps.mr_check.outputs.ready == 'true' && github.event_name == 'workflow_dispatch' && inputs.skip_build == true && inputs.artifacts_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mod-jar-*
+          path: dist_release
+          merge-multiple: true
+          run-id: ${{ inputs.artifacts_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Built Mod JARs (GitHub Release)
+        if: steps.mr_check.outputs.ready == 'true' && github.event_name == 'workflow_dispatch' && inputs.skip_build == true && inputs.artifacts_run_id == ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          mkdir -p dist_release
+          gh release download "$TAG" -p "*.jar" -D dist_release
 
       - name: Upload Artifacts to Modrinth
         if: steps.mr_check.outputs.ready == 'true'
