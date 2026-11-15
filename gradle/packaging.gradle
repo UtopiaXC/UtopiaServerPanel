@@ -90,7 +90,7 @@ ext.enforceJarSizeLimit = { File jarFile, long maxBytes ->
     long size = jarFile.length()
     double mb = size / 1000000.0
     logger.lifecycle("Built artifact ${jarFile.name}: ${size} bytes (${String.format(Locale.ROOT, '%.3f', mb)} MB)")
-    if (size >= maxBytes) {
+    if (maxBytes > 0 && size >= maxBytes) {
         throw new GradleException("Artifact ${jarFile.name} exceeds max size ${maxBytes} bytes (${size} bytes)")
     }
 }

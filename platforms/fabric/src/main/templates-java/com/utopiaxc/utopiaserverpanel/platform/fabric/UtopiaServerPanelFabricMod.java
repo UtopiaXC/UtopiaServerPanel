@@ -111,11 +111,19 @@ public final class UtopiaServerPanelFabricMod implements ModInitializer {
             } catch (Throwable ignored) {}
         });
 
-        //? if mc >= 1.19 {
+        //? if mc >= 1.19.3 {
         ServerMessageEvents.CHAT_MESSAGE.register((message, sender, params) -> {
             try {
                 if (sender != null && message != null) {
                     PanelEngine.onChatMessage(sender.getStringUUID(), sender.getName().getString(), message.signedContent());
+                }
+            } catch (Throwable ignored) {}
+        });
+        //?} else if mc >= 1.19 {
+        ServerMessageEvents.CHAT_MESSAGE.register((message, sender, params) -> {
+            try {
+                if (sender != null && message != null && message.signedContent() != null) {
+                    PanelEngine.onChatMessage(sender.getStringUUID(), sender.getName().getString(), message.signedContent().plain());
                 }
             } catch (Throwable ignored) {}
         });

@@ -27,7 +27,11 @@ import net.neoforged.neoforge.event.level.block.BreakBlockEvent;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+//? if mc >= 1.20.5 {
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+//?} else {
+import net.neoforged.neoforge.event.TickEvent;
+//?}
 import org.slf4j.Logger;
 
 /**
@@ -145,6 +149,7 @@ public final class UtopiaServerPanelNeoForgeMod {
         } catch (Throwable ignored) {}
     }
 
+    //? if mc >= 1.20.5 {
     @SubscribeEvent
     public void onTickPre(ServerTickEvent.Pre event) {
         tickStartNs = System.nanoTime();
@@ -156,5 +161,17 @@ public final class UtopiaServerPanelNeoForgeMod {
         long total = start > 0L ? (System.nanoTime() - start) : 0L;
         PanelEngine.onServerTick(total, 0L, 0L, 0L);
     }
+    //?} else {
+    @SubscribeEvent
+    public void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase == TickEvent.Phase.START) {
+            tickStartNs = System.nanoTime();
+        } else {
+            long start = tickStartNs;
+            long total = start > 0L ? (System.nanoTime() - start) : 0L;
+            PanelEngine.onServerTick(total, 0L, 0L, 0L);
+        }
+    }
+    //?}
 }
 

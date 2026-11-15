@@ -26,6 +26,16 @@ on:
         required: false
         type: boolean
         default: false
+      publish_modrinth:
+        description: 'Publish to Modrinth'
+        required: true
+        type: boolean
+        default: true
+      modrinth_dry_run:
+        description: 'Modrinth Dry Run (validate metadata without uploading)'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -145,7 +155,17 @@ jobs:
       - name: Build ${{ matrix.loader }} ${{ matrix.mc }}
         run: |
           chmod +x ./gradlew
-          ./gradlew -p "${{ matrix.project_dir }}" build --no-daemon -PskipWeb=true -Pmod_version=${{ needs.version.outputs.version }}
+          for attempt in 1 2 3; do
+            if ./gradlew -p "${{ matrix.project_dir }}" build --no-daemon -PskipWeb=true -Pmod_version=${{ needs.version.outputs.version }}; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              wait_secs=$((attempt * 15))
+              echo "Gradle build failed (attempt $attempt/3), retrying in ${wait_secs}s..."
+              sleep "$wait_secs"
+            fi
+          done
+          exit 1
 
       - name: Collect Release Artifact
         shell: bash
@@ -171,7 +191,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 18
+      max-parallel: 6
       matrix:
         include: ${{ fromJson(needs.version.outputs.modern_matrix) }}
     steps:
@@ -203,7 +223,17 @@ jobs:
       - name: Build ${{ matrix.loader }} ${{ matrix.mc }}
         run: |
           chmod +x ./gradlew
-          ./gradlew -p "${{ matrix.project_dir }}" build --no-daemon -PskipWeb=true -Ptarget_mc=${{ matrix.mc }} -Pmod_version=${{ needs.version.outputs.version }}
+          for attempt in 1 2 3; do
+            if ./gradlew -p "${{ matrix.project_dir }}" build --no-daemon -PskipWeb=true -Ptarget_mc=${{ matrix.mc }} -Pmod_version=${{ needs.version.outputs.version }}; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              wait_secs=$((attempt * 15))
+              echo "Gradle build failed (attempt $attempt/3), retrying in ${wait_secs}s..."
+              sleep "$wait_secs"
+            fi
+          done
+          exit 1
 
       - name: Collect Release Artifact
         shell: bash
@@ -336,4 +366,70 @@ jobs:
             ARGS+=(--dry-run)
           fi
           python3 scripts/ci_helpers.py publish-curseforge "${ARGS[@]}"
+
+  publish-modrinth:
+    name: Publish to Modrinth
+    needs: [version, build-legacy, build-modern]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && (github.event_name != 'workflow_dispatch' || inputs.publish_modrinth != false)
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check Modrinth Credentials
+        id: mr_check
+        shell: bash
+        env:
+          MR_TOKEN: ${{ secrets.MODRINTH_TOKEN || secrets.MODRINTH_API_TOKEN }}
+          MR_PROJECT_ID: ${{ secrets.MODRINTH_PROJECT_ID || vars.MODRINTH_PROJECT_ID }}
+          DRY_RUN: ${{ inputs.modrinth_dry_run == true }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$MR_TOKEN" ] || [ -z "$MR_PROJECT_ID" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Modrinth Distribution Skipped"
+              echo ""
+              echo "Configure repository Secret \`MODRINTH_TOKEN\` (or \`MODRINTH_API_TOKEN\`) and Variable/Secret \`MODRINTH_PROJECT_ID\` to enable Modrinth uploads."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "Modrinth credentials not configured; skipping upload."
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Download Built Mod JARs
+        if: steps.mr_check.outputs.ready == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mod-jar-*
+          path: dist_release
+          merge-multiple: true
+
+      - name: Upload Artifacts to Modrinth
+        if: steps.mr_check.outputs.ready == 'true'
+        shell: bash
+        env:
+          MR_TOKEN: ${{ secrets.MODRINTH_TOKEN || secrets.MODRINTH_API_TOKEN }}
+          MR_PROJECT_ID: ${{ secrets.MODRINTH_PROJECT_ID || vars.MODRINTH_PROJECT_ID }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+          NOTE_FILE: ${{ needs.version.outputs.note_file }}
+          DRY_RUN: ${{ inputs.modrinth_dry_run == true }}
+        run: |
+          ARGS=(
+            --project-id "${MR_PROJECT_ID:-0}"
+            --token "$MR_TOKEN"
+            --tag "$TAG"
+            --version "$VERSION"
+            --note "$NOTE_FILE"
+            --artifacts-dir dist_release
+          )
+          if [ "$DRY_RUN" = "true" ]; then
+            ARGS+=(--dry-run)
+          fi
+          python3 scripts/ci_helpers.py publish-modrinth "${ARGS[@]}"
 

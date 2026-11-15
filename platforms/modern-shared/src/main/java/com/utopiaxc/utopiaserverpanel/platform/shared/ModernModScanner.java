@@ -55,9 +55,12 @@ public final class ModernModScanner {
             java.util.List<? extends net.minecraftforge.forgespi.language.IModInfo> mods = net.minecraftforge.fml.ModList.get().getMods();
             //?}
             for (net.minecraftforge.forgespi.language.IModInfo info : mods) {
-                //? if mc >= 1.18 {
+                //? if mc >= 1.19 {
                 String authors = info.getConfig().getConfigElement("authors").map(Object::toString).orElse("");
                 String homepage = info.getModURL().map(Object::toString).orElse("");
+                //?} else if mc >= 1.18 {
+                String authors = info.getConfig().getConfigElement("authors").map(Object::toString).orElse("");
+                String homepage = info.getConfig().getConfigElement("displayURL").map(Object::toString).orElse("");
                 //?} else {
                 String authors = "";
                 String homepage = info.getUpdateURL() != null ? info.getUpdateURL().toString() : "";

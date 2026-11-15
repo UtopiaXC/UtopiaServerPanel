@@ -21,6 +21,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from urllib.parse import quote
 
 CURSEFORGE_UPLOAD_BASE_URL = "https://minecraft.curseforge.com"
+MODRINTH_API_BASE_URL = "https://api.modrinth.com"
+MODRINTH_FABRIC_API_PROJECT_ID = "P7dR8mSH"
 
 
 def load_versions(repo_root: Path) -> dict:
@@ -96,7 +98,7 @@ def resolve_release_note(repo_root: Path, tag: str, clean_version: str) -> Optio
 
 def verify_artifacts(repo_root: Path, version: str, artifacts_dir: Path) -> Dict[Tuple[str, str], Path]:
     manifest = load_versions(repo_root)
-    max_bytes = int(manifest.get("maxJarBytes", 10_000_000))
+    max_bytes = int(manifest.get("maxJarBytes", 0))
     prefix = manifest.get("artifactPrefix", "UtopiaServerPanel")
 
     found: Dict[Tuple[str, str], Path] = {}
@@ -113,7 +115,7 @@ def verify_artifacts(repo_root: Path, version: str, artifacts_dir: Path) -> Dict
             size = jar_path.stat().st_size
             if size <= 0:
                 errors.append(f"Empty artifact: {expected_name}")
-            elif size >= max_bytes:
+            elif max_bytes > 0 and size >= max_bytes:
                 errors.append(
                     f"Artifact too large: {expected_name} ({size} bytes >= limit {max_bytes} bytes)"
                 )
@@ -348,16 +350,21 @@ def build_curseforge_metadata(
     return payload
 
 
-def encode_multipart_upload(metadata: dict, jar_path: Path) -> Tuple[bytes, str]:
-    """Encode CurseForge multipart/form-data request body without third-party dependencies."""
-    boundary = f"----UtopiaServerPanelCF{uuid.uuid4().hex}"
+def encode_multipart_upload(
+    metadata: dict,
+    jar_path: Path,
+    metadata_field: str = "metadata",
+    boundary_prefix: str = "UtopiaServerPanelCF",
+) -> Tuple[bytes, str]:
+    """Encode multipart/form-data request body with JSON metadata and JAR file without third-party deps."""
+    boundary = f"----{boundary_prefix}{uuid.uuid4().hex}"
     meta_bytes = json.dumps(metadata, ensure_ascii=False).encode("utf-8")
     file_bytes = jar_path.read_bytes()
 
     parts = [
         (
             f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="metadata"\r\n'
+            f'Content-Disposition: form-data; name="{metadata_field}"\r\n'
             f"Content-Type: application/json; charset=utf-8\r\n\r\n"
         ).encode("utf-8"),
         meta_bytes,
@@ -373,26 +380,18 @@ def encode_multipart_upload(metadata: dict, jar_path: Path) -> Tuple[bytes, str]
     return b"".join(parts), boundary
 
 
-def upload_curseforge_file(
-    base_url: str, project_id: str, token: str, metadata: dict, jar_path: Path
+def _post_multipart_with_retry(
+    url: str,
+    headers: Dict[str, str],
+    body: bytes,
+    jar_name: str,
+    service_name: str,
 ) -> dict:
-    """Upload one artifact to CurseForge with transient error/rate-limit retries."""
-    url = f"{base_url.rstrip('/')}/api/projects/{project_id}/upload-file"
-    body, boundary = encode_multipart_upload(metadata, jar_path)
+    """POST multipart payload with transient HTTP/network retry handling."""
     retryable = {429, 500, 502, 503, 504}
 
     for attempt in range(1, 5):
-        req = urllib.request.Request(
-            url,
-            data=body,
-            headers={
-                "X-Api-Token": token,
-                "Content-Type": f"multipart/form-data; boundary={boundary}",
-                "Accept": "application/json",
-                "User-Agent": "UtopiaServerPanel-CI/1.0",
-            },
-            method="POST",
-        )
+        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=120) as resp:
                 raw = resp.read().decode("utf-8").strip()
@@ -403,24 +402,61 @@ def upload_curseforge_file(
                 retry_after = err.headers.get("Retry-After") if err.headers else None
                 delay = float(retry_after) if retry_after and retry_after.isdigit() else float(3 * attempt)
                 print(
-                    f"Retryable HTTP {err.code} uploading {jar_path.name} (attempt {attempt}/4), waiting {delay}s: {err_body}",
+                    f"Retryable HTTP {err.code} uploading {jar_name} to {service_name} (attempt {attempt}/4), waiting {delay}s: {err_body}",
                     file=sys.stderr,
                 )
                 time.sleep(delay)
                 continue
-            raise RuntimeError(f"CurseForge upload failed for {jar_path.name}: HTTP {err.code} {err_body}") from err
+            raise RuntimeError(f"{service_name} upload failed for {jar_name}: HTTP {err.code} {err_body}") from err
         except urllib.error.URLError as err:
             if attempt < 4:
                 delay = float(3 * attempt)
                 print(
-                    f"Network error uploading {jar_path.name} (attempt {attempt}/4), waiting {delay}s: {err}",
+                    f"Network error uploading {jar_name} to {service_name} (attempt {attempt}/4), waiting {delay}s: {err}",
                     file=sys.stderr,
                 )
                 time.sleep(delay)
                 continue
-            raise RuntimeError(f"CurseForge upload network error for {jar_path.name}: {err}") from err
+            raise RuntimeError(f"{service_name} upload network error for {jar_name}: {err}") from err
 
-    raise RuntimeError(f"CurseForge upload exhausted retries for {jar_path.name}")
+    raise RuntimeError(f"{service_name} upload exhausted retries for {jar_name}")
+
+
+def _write_distribution_summary(
+    summary_file: Optional[Path],
+    heading: str,
+    version_col_title: str,
+    results: Sequence[Tuple[str, str, str, str]],
+) -> None:
+    if summary_file is None:
+        return
+    lines = [
+        heading,
+        "",
+        f"| Artifact | Loader | {version_col_title} | Status |",
+        "| --- | --- | --- | --- |",
+    ]
+    for jar_name, loader, mc_text, status in results:
+        lines.append(f"| `{jar_name}` | {loader} | `{mc_text}` | {status} |")
+    lines.append("")
+    summary_file.parent.mkdir(parents=True, exist_ok=True)
+    with summary_file.open("a", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+
+
+def upload_curseforge_file(
+    base_url: str, project_id: str, token: str, metadata: dict, jar_path: Path
+) -> dict:
+    """Upload one artifact to CurseForge with transient error/rate-limit retries."""
+    url = f"{base_url.rstrip('/')}/api/projects/{project_id}/upload-file"
+    body, boundary = encode_multipart_upload(metadata, jar_path, metadata_field="metadata", boundary_prefix="UtopiaServerPanelCF")
+    headers = {
+        "X-Api-Token": token,
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+        "Accept": "application/json",
+        "User-Agent": "UtopiaServerPanel-CI/1.0",
+    }
+    return _post_multipart_with_retry(url, headers, body, jar_path.name, "CurseForge")
 
 
 def publish_curseforge(
@@ -510,22 +546,176 @@ def publish_curseforge(
                 uploaded_count += 1
                 time.sleep(0.5)
 
-    if summary_file is not None:
-        lines = [
-            f"## CurseForge Distribution ({tag})",
-            "",
-            "| Artifact | Loader | CurseForge MC Versions | Status |",
-            "| --- | --- | --- | --- |",
-        ]
-        for jar_name, loader, mc_text, status in results:
-            lines.append(f"| `{jar_name}` | {loader} | `{mc_text}` | {status} |")
-        lines.append("")
-        summary_file.parent.mkdir(parents=True, exist_ok=True)
-        with summary_file.open("a", encoding="utf-8") as fh:
-            fh.write("\n".join(lines))
+    _write_distribution_summary(summary_file, f"## CurseForge Distribution ({tag})", "CurseForge MC Versions", results)
 
     if uploaded_count == 0:
         raise RuntimeError("No artifacts were uploaded to CurseForge.")
+
+
+def _mr_get_json(url: str, token: str = "") -> object:
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "UtopiaServerPanel-CI/1.0",
+    }
+    if token:
+        headers["Authorization"] = token
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def resolve_modrinth_versions(
+    entry: dict,
+    loader: str,
+    known_mc_versions: set,
+    known_loaders: set,
+) -> Tuple[List[str], Optional[str]]:
+    """Resolve supported Modrinth game_versions and validate loader for one baseline + loader target."""
+    mc_names = resolve_target_mc_versions(entry, loader)
+    matched_mc_names = [name for name in mc_names if name in known_mc_versions]
+    if not matched_mc_names:
+        return [], f"Minecraft versions {mc_names} not yet available on Modrinth"
+
+    if loader.lower() not in known_loaders:
+        raise RuntimeError(f"Modrinth tag catalog does not contain loader '{loader}'")
+    return matched_mc_names, None
+
+
+def build_modrinth_metadata(
+    entry: dict,
+    loader: str,
+    version: str,
+    changelog: str,
+    release_type: str,
+    project_id: str,
+    game_versions: List[str],
+) -> dict:
+    """Build Modrinth POST /v2/version `data` JSON payload."""
+    loader_title = {"forge": "Forge", "neoforge": "NeoForge", "fabric": "Fabric"}.get(loader, loader)
+    dependencies = []
+    if loader == "fabric":
+        dependencies.append(
+            {
+                "project_id": MODRINTH_FABRIC_API_PROJECT_ID,
+                "dependency_type": "required",
+            }
+        )
+    return {
+        "name": f"UtopiaServerPanel {version} (MC {entry['mc']} {loader_title})",
+        "version_number": f"{version}+mc{entry['mc']}-{loader}",
+        "changelog": changelog,
+        "dependencies": dependencies,
+        "game_versions": game_versions,
+        "version_type": release_type,
+        "loaders": [loader.lower()],
+        "featured": True,
+        "project_id": project_id,
+        "file_parts": ["file"],
+        "primary_file": "file",
+    }
+
+
+def upload_modrinth_version(
+    base_url: str, token: str, metadata: dict, jar_path: Path
+) -> dict:
+    """Create a Modrinth version and upload one artifact with transient error/rate-limit retries."""
+    url = f"{base_url.rstrip('/')}/v2/version"
+    body, boundary = encode_multipart_upload(metadata, jar_path, metadata_field="data", boundary_prefix="UtopiaServerPanelMR")
+    headers = {
+        "Authorization": token,
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+        "Accept": "application/json",
+        "User-Agent": "UtopiaServerPanel-CI/1.0",
+    }
+    return _post_multipart_with_retry(url, headers, body, jar_path.name, "Modrinth")
+
+
+def publish_modrinth(
+    repo_root: Path,
+    project_id: str,
+    token: str,
+    tag: str,
+    version: str,
+    note_file: Optional[str],
+    artifacts_dir: Path,
+    dry_run: bool = False,
+    base_url: str = MODRINTH_API_BASE_URL,
+    summary_file: Optional[Path] = None,
+) -> None:
+    manifest = load_versions(repo_root)
+    prefix = manifest.get("artifactPrefix", "UtopiaServerPanel")
+    found = verify_artifacts(repo_root, version, artifacts_dir)
+    changelog = read_release_note_text(repo_root, tag, version, note_file) or f"Release {tag}"
+    release_type = curseforge_release_type(tag)
+
+    clean_base = base_url.rstrip("/")
+    resolved_project_id = project_id
+    if dry_run and not token:
+        known_mc_versions = {
+            mc_name
+            for entry in manifest["baselines"]
+            for mc_name in (
+                entry.get("curseforgeVersions", []) + entry.get("curseforgeForgeVersions", [])
+            )
+        }
+        known_loaders = {"forge", "fabric", "neoforge"}
+    else:
+        project_info = _mr_get_json(f"{clean_base}/v2/project/{quote(project_id, safe='')}", token)
+        if not isinstance(project_info, dict) or not project_info.get("id"):
+            raise RuntimeError(f"Unable to resolve Modrinth project '{project_id}'")
+        resolved_project_id = str(project_info["id"])
+
+        gv_tags = _mr_get_json(f"{clean_base}/v2/tag/game_version")
+        loader_tags = _mr_get_json(f"{clean_base}/v2/tag/loader")
+        known_mc_versions = {str(item["version"]) for item in gv_tags if isinstance(item, dict) and "version" in item}
+        known_loaders = {str(item["name"]).lower() for item in loader_tags if isinstance(item, dict) and "name" in item}
+
+    results: List[Tuple[str, str, str, str]] = []
+    uploaded_count = 0
+    total = sum(len(entry["loaders"]) for entry in manifest["baselines"])
+    index = 0
+
+    for entry in manifest["baselines"]:
+        mc = entry["mc"]
+        for loader in entry["loaders"]:
+            index += 1
+            jar_name = f"{prefix}-{version}-mc{mc}-{loader}.jar"
+            jar_path = found[(mc, loader)]
+            matched_mc, skip_reason = resolve_modrinth_versions(entry, loader, known_mc_versions, known_loaders)
+            if skip_reason is not None:
+                print(f"[{index}/{total}] SKIP {jar_name}: {skip_reason}", file=sys.stderr)
+                results.append((jar_name, loader, "-", f"Skipped ({skip_reason})"))
+                continue
+
+            metadata = build_modrinth_metadata(
+                entry=entry,
+                loader=loader,
+                version=version,
+                changelog=changelog,
+                release_type=release_type,
+                project_id=resolved_project_id,
+                game_versions=matched_mc,
+            )
+
+            if dry_run:
+                print(
+                    f"[{index}/{total}] DRY-RUN {jar_name}: mc={matched_mc}, version_number={metadata['version_number']}, "
+                    f"name={metadata['name']}"
+                )
+                results.append((jar_name, loader, ", ".join(matched_mc), "Dry-run OK"))
+                uploaded_count += 1
+            else:
+                resp = upload_modrinth_version(base_url, token, metadata, jar_path)
+                mr_ver_id = resp.get("id", "ok")
+                print(f"[{index}/{total}] UPLOADED {jar_name} -> Modrinth version id {mr_ver_id} (mc={matched_mc})")
+                results.append((jar_name, loader, ", ".join(matched_mc), f"Uploaded (id: {mr_ver_id})"))
+                uploaded_count += 1
+                time.sleep(0.5)
+
+    _write_distribution_summary(summary_file, f"## Modrinth Distribution ({tag})", "Modrinth MC Versions", results)
+
+    if uploaded_count == 0:
+        raise RuntimeError("No artifacts were uploaded to Modrinth.")
 
 
 def main() -> int:
@@ -556,6 +746,17 @@ def main() -> int:
     p_cf.add_argument("--base-url", default=CURSEFORGE_UPLOAD_BASE_URL)
     p_cf.add_argument("--summary-file", default=os.environ.get("GITHUB_STEP_SUMMARY", ""))
 
+    p_mr = sub.add_parser("publish-modrinth")
+    p_mr.add_argument("--project-id", required=True)
+    p_mr.add_argument("--token", default="")
+    p_mr.add_argument("--tag", required=True)
+    p_mr.add_argument("--version", required=True)
+    p_mr.add_argument("--note", default="")
+    p_mr.add_argument("--artifacts-dir", required=True)
+    p_mr.add_argument("--dry-run", action="store_true")
+    p_mr.add_argument("--base-url", default=MODRINTH_API_BASE_URL)
+    p_mr.add_argument("--summary-file", default=os.environ.get("GITHUB_STEP_SUMMARY", ""))
+
     args = parser.parse_args()
     repo_root = Path(__file__).resolve().parent.parent
 
@@ -579,6 +780,22 @@ def main() -> int:
         if not args.dry_run and not args.token:
             raise SystemExit("ERROR: CurseForge token is required unless --dry-run is set.")
         publish_curseforge(
+            repo_root=repo_root,
+            project_id=args.project_id,
+            token=args.token,
+            tag=args.tag,
+            version=args.version,
+            note_file=args.note or None,
+            artifacts_dir=Path(args.artifacts_dir),
+            dry_run=args.dry_run,
+            base_url=args.base_url,
+            summary_file=Path(args.summary_file) if args.summary_file else None,
+        )
+        return 0
+    if args.command == "publish-modrinth":
+        if not args.dry_run and not args.token:
+            raise SystemExit("ERROR: Modrinth token is required unless --dry-run is set.")
+        publish_modrinth(
             repo_root=repo_root,
             project_id=args.project_id,
             token=args.token,

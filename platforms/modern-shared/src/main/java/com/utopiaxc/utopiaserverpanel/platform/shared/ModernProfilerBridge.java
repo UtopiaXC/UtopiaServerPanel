@@ -87,7 +87,7 @@ public final class ModernProfilerBridge {
                     }
                 }
             }
-            //? if mc >= 26.1 {
+            //? if mc >= 1.21.5 {
             for (long forced : level.getForceLoadedChunks()) {
             //?} else {
             for (long forced : level.getForcedChunks()) {

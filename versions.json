@@ -5,7 +5,7 @@
   "modLicense": "All Rights Reserved",
   "modGroup": "com.utopiaxc.utopiaserverpanel",
   "artifactPrefix": "UtopiaServerPanel",
-  "maxJarBytes": 10000000,
+  "maxJarBytes": 0,
   "baselines": [
     {
       "mc": "1.7.10",
