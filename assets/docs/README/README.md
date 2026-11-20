@@ -6,6 +6,9 @@
 
 Utopia Server Panel 将 Web 管理后台、实时控制台、状态监控以及玩家账号绑定系统直接内置于 Minecraft 服务端中，支持从 `1.7.10` 到 `26.3` 的 Forge、NeoForge 与 Fabric。
 
+## 文档
+[Utopia Server Panel 文档](https://docs-usp.utopiaxc.com/)，基于VitePress。  
+
 
 ## 在线演示
 [在我的服务器上运行的一个All The Mod 10客户端](https://mc-panel.utopiaxc.com/)

@@ -5,6 +5,8 @@
 **Language**: English | [简体中文](assets/docs/README/README.md)
 
 Utopia Server Panel embeds a self-contained Web UI, real-time console, server monitor, and player-account binding service directly inside Minecraft, supporting Forge, NeoForge, and Fabric from 1.7.10 to 26.3.
+## Documentation
+[Utopia Server Panel Documentation](https://docs-usp.utopiaxc.com/) powered by VitePress.  
 
 ## Live Demo
 [All The Mod 10 Running On My Server](https://mc-panel.utopiaxc.com/)
